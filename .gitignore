@@ -1,6 +1,7 @@
 # 隐藏目录
 .*
 !.gitignore
+!.github
 
 # PPT 历史文件
 pptx/
