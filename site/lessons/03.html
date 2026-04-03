@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第03课：权限系统 — AI 安全的核心防线 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 权限系统的6种模式、多层决策链、危险模式检测与拒绝追踪状态机设计。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    #progress-bar { background: var(--gradient-accent); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-blue">第一阶段 · 宏观架构与核心机制</span>
+      <span class="sep">/</span>
+      <span>第03课</span>
+    </nav>
+
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 03 · PHASE 01</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      权限系统<br/>
+      <span class="gradient-text">AI 安全的核心防线</span>
+    </h1>
+
+    <div class="lesson-meta">
+      <span class="tag tag-blue">第一阶段 · 宏观架构</span>
+      <span class="tag tag-orange">⏱ 建议 120 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐ 中高级</span>
+      <span class="tag tag-green">6 种模式 · 多层决策链</span>
+    </div>
+
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解权限系统的整体设计哲学：为什么 AI 助手需要细粒度权限控制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握 6 种权限模式的特征与适用场景：从 <code>default</code> 到 <code>bypassPermissions</code></span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>深入理解多层权限决策链：规则检查 → 工具检查 → 安全免疫检查 → 模式豁免 → 分类器评估</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>掌握危险模式检测机制：Bash/PowerShell 危险前缀列表的设计逻辑</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>学习工程权衡思想：fail-closed vs fail-open 策略、拒绝追踪的自我保护机制</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-problem">1.1 权限系统的本质问题</a></div>
+        <div class="toc-item sub"><a href="#concept-model">1.2 核心抽象模型</a></div>
+        <div class="toc-item sub"><a href="#concept-sources">1.3 规则的多源来源</a></div>
+        <div class="toc-item"><a href="#perm-modes">§ 权限模式详解</a></div>
+        <div class="toc-item sub"><a href="#six-modes">6 种权限模式</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 权限系统整体架构</a></div>
+        <div class="toc-item sub"><a href="#arch-principles">2.2 核心设计原则</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-inner">3.1 权限决策主函数</a></div>
+        <div class="toc-item sub"><a href="#code-outer">3.2 外层包装与模式转换</a></div>
+        <div class="toc-item sub"><a href="#code-auto">3.3 Auto 模式三级快路径</a></div>
+        <div class="toc-item sub"><a href="#code-irongate">3.4 Iron Gate fail-closed</a></div>
+        <div class="toc-item sub"><a href="#code-denial">3.5 拒绝追踪状态机</a></div>
+        <div class="toc-item sub"><a href="#code-dangerous">3.6 危险模式检测</a></div>
+        <div class="toc-item sub"><a href="#code-dataflow">完整数据流</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-problem" class="reveal">
+          <h3 class="content-h3">1.1 权限系统的本质问题</h3>
+          <p class="content-p">
+            Claude Code 是一个能够操作文件系统、执行 Shell 命令、访问网络的 AI 助手。这带来了一个根本性的安全问题：
+          </p>
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>⚠️</span> 核心挑战</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              <strong>如何在 AI 高度自动化的前提下，确保用户对危险操作保有控制权？</strong>
+            </p>
+            <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-sm); padding-left: var(--space-lg);">
+              <li>同一操作（如 <code>Bash</code>）在不同上下文中风险级别差异巨大</li>
+              <li>用户期望越来越自动化，但不愿意放弃对关键操作的控制</li>
+              <li>团队/组织级别的安全策略需要凌驾于个人偏好之上</li>
+              <li>AI 分类器本身可能不可用或出错</li>
+            </ul>
+          </div>
+        </div>
+
+        <div id="concept-model" class="reveal">
+          <h3 class="content-h3">1.2 核心抽象模型</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">抽象模型</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-plaintext">PermissionDecision = allow | ask | deny
+PermissionResult   = PermissionDecision | passthrough（工具返回，上层处理）
+
+决策体现在三个层面：
+用户层（模式选择）──────────────────────────── PermissionMode
+规则层（静态规则集）────────────────────────── ToolPermissionContext
+工具层（动态检查）──────────────────────────── Tool.checkPermissions()</code></pre>
+          </div>
+        </div>
+
+        <div id="concept-sources" class="reveal">
+          <h3 class="content-h3">1.3 权限规则的多源来源</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    UserSettings["用户设置 ~/.claude/settings.json"]
+    ProjectSettings["项目设置 .claude/settings.json"]
+    LocalSettings["本地设置 .claude/settings.local.json"]
+    PolicySettings["策略设置 托管策略（企业）"]
+    FlagSettings["标志设置 Feature Gate"]
+    CliArg["CLI 参数 --allowedTools 等"]
+    Command["命令注入 /allow-tools 等"]
+    Session["会话规则 运行时添加"]
+
+    UserSettings --> Context["ToolPermissionContext（DeepImmutable）"]
+    ProjectSettings --> Context
+    LocalSettings --> Context
+    PolicySettings --> Context
+    FlagSettings --> Context
+    CliArg --> Context
+    Command --> Context
+    Session --> Context
+            </div>
+          </div>
+          <p class="content-p">规则有三种行为：<strong>allow</strong>（直接放行）、<strong>deny</strong>（直接拒绝）、<strong>ask</strong>（提示用户）。优先级顺序：<code>deny &gt; ask &gt; allow</code>（拒绝规则不会被允许规则覆盖）。</p>
+        </div>
+      </section>
+
+      <!-- 权限模式详解 -->
+      <section class="content-section" id="perm-modes">
+        <div class="reveal">
+          <p class="section-label">权限模式</p>
+          <h2 class="content-h2">权限模式详解</h2>
+        </div>
+
+        <div id="six-modes" class="reveal">
+          <h3 class="content-h3">6 种权限模式</h3>
+
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>模式</th>
+                <th>标题</th>
+                <th>外部可见</th>
+                <th>适用场景</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>default</code></td>
+                <td>Default</td>
+                <td><span class="tag tag-green">✅</span></td>
+                <td>日常交互，每次操作前询问</td>
+              </tr>
+              <tr>
+                <td><code>plan</code></td>
+                <td>Plan Mode ⏸</td>
+                <td><span class="tag tag-green">✅</span></td>
+                <td>先规划后执行，减少误操作</td>
+              </tr>
+              <tr>
+                <td><code>acceptEdits</code></td>
+                <td>Accept edits ⏵⏵</td>
+                <td><span class="tag tag-green">✅</span></td>
+                <td>自动接受文件编辑，但命令仍需确认</td>
+              </tr>
+              <tr>
+                <td><code>bypassPermissions</code></td>
+                <td>Bypass Permissions ⏵⏵ <span class="tag tag-red" style="background:#fef2f2; color:#dc2626; border-color:#fecaca;">⚠️ 红色</span></td>
+                <td><span class="tag tag-green">✅</span></td>
+                <td>CI/CD 全自动化，极度危险</td>
+              </tr>
+              <tr>
+                <td><code>dontAsk</code></td>
+                <td>Don't Ask ⏵⏵ <span class="tag tag-red" style="background:#fef2f2; color:#dc2626; border-color:#fecaca;">⚠️ 红色</span></td>
+                <td><span class="tag tag-green">✅</span></td>
+                <td>将所有"询问"转为"拒绝"</td>
+              </tr>
+              <tr>
+                <td><code>auto</code></td>
+                <td>Auto mode ⏵⏵ <span class="tag tag-orange">⚡ 黄色</span></td>
+                <td><span class="tag" style="background:#f0fdf4; color:#16a34a;">❌ 仅内部</span></td>
+                <td>AI 分类器替代人工确认</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="mermaid-container" style="margin-top: var(--space-lg);">
+            <div class="mermaid">
+graph LR
+    Default["default 每次询问"]
+    Plan["plan 预规划保护"]
+    AcceptEdits["acceptEdits 自动接受编辑"]
+    Auto["auto AI分类器决策"]
+    DontAsk["dontAsk 询问→拒绝"]
+    Bypass["bypassPermissions 全部放行"]
+
+    Default -->|"更宽松"| AcceptEdits
+    AcceptEdits -->|"更宽松"| Auto
+    Default -->|"更严格"| DontAsk
+    Default -->|"规划模式"| Plan
+    Plan -->|"内部扩展"| Auto
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 权限系统整体架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "初始化层"
+        Setup["permissionSetup.ts 规则加载 + 模式切换"]
+        Loader["permissionsLoader.ts 多源规则读取"]
+    end
+
+    subgraph "类型层"
+        Types["types/permissions.ts 纯类型定义（无运行时依赖）"]
+        ModeTs["PermissionMode.ts 模式配置与转换"]
+    end
+
+    subgraph "决策引擎层"
+        Engine["permissions.ts hasPermissionsToUseTool()"]
+        DenialTracking["denialTracking.ts 拒绝追踪状态机"]
+        DangerousPatterns["dangerousPatterns.ts 危险模式清单"]
+    end
+
+    subgraph "工具检查层"
+        BashSecurity["BashTool/bashSecurity.ts 危险命令检测"]
+        PSValidation["PowerShellTool/ readOnlyValidation.ts"]
+        FsOps["fsOperations.ts 路径安全检查"]
+    end
+
+    subgraph "分类器层（可选）"
+        Classifier["classifierDecision.ts AI 分类决策"]
+        YoloClassifier["yoloClassifier.ts 动作格式化"]
+    end
+
+    Setup --> Engine
+    Loader --> Setup
+    Types --> Engine
+    ModeTs --> Engine
+    Engine --> BashSecurity
+    Engine --> PSValidation
+    Engine --> FsOps
+    Engine --> Classifier
+    Engine --> DenialTracking
+    DangerousPatterns --> Setup
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-principles" class="reveal">
+          <h3 class="content-h3">2.2 核心设计原则</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-blue);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 关注点分离</h4>
+            <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; padding-left: var(--space-lg);">
+              <li><code>types/permissions.ts</code>：<strong>纯类型文件</strong>，无任何运行时依赖，专为打破循环引用设计</li>
+              <li><code>permissions.ts</code>：决策引擎，只负责"做决策"</li>
+              <li><code>permissionSetup.ts</code>：模式切换副作用，负责规则的初始化和动态变更</li>
+            </ul>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-green);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 不可变上下文（Immutability）</h4>
+            <div class="code-block" style="margin-top: var(--space-sm);">
+              <div class="code-block-header">
+                <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+                <span class="code-block-lang">TypeScript · src/types/permissions.ts</span>
+                <button class="code-copy-btn" aria-label="复制代码">复制</button>
+              </div>
+              <pre><code class="language-typescript">export type ToolPermissionContext = {
+  readonly mode: PermissionMode
+  readonly additionalWorkingDirectories: ReadonlyMap&lt;string, AdditionalWorkingDirectory&gt;
+  readonly alwaysAllowRules: ToolPermissionRulesBySource
+  readonly alwaysDenyRules: ToolPermissionRulesBySource
+  readonly alwaysAskRules: ToolPermissionRulesBySource
+  readonly isBypassPermissionsModeAvailable: boolean
+  readonly strippedDangerousRules?: ToolPermissionRulesBySource
+  readonly shouldAvoidPermissionPrompts?: boolean
+  readonly prePlanMode?: PermissionMode
+}</code></pre>
+            </div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <code>ToolPermissionContext</code> 是完全只读的，任何修改都会生成新的对象而非直接改变现有状态。这防止了在权限检查过程中的意外状态修改，是<strong>防御性编程</strong>的体现。
+            </p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-orange);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. 决策链的不可绕过性</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">某些安全检查被设计为"免疫于模式豁免"：</p>
+            <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px; padding-left: var(--space-lg); margin-top: var(--space-sm);">
+              <li>安全路径检查（<code>type: 'safetyCheck'</code>）</li>
+              <li>内容级 <code>ask</code> 规则（用户明确配置的命令确认）</li>
+              <li>需要用户交互的工具（<code>tool.requiresUserInteraction()</code>）</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码深度走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 权限决策主函数 -->
+        <div id="code-inner" class="reveal">
+          <h3 class="content-h3">走查 1：权限决策主函数 hasPermissionsToUseToolInner</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/utils/permissions/permissions.ts</code> L1158-1319<br/>
+            这是整个权限系统的心脏——一个完整的决策漏斗：
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/permissions/permissions.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="7,14,22,30,37,44,50,56,65,71"><code class="language-typescript">async function hasPermissionsToUseToolInner(
+  tool: Tool,
+  input: { [key: string]: unknown },
+  context: ToolUseContext,
+): Promise&lt;PermissionDecision&gt; {
+
+  // 第一步：中止信号检查
+  if (context.abortController.signal.aborted) {
+    throw new AbortError()  // 快速失败，避免无效计算
+  }
+
+  let appState = context.getAppState()
+
+  // 步骤 1a：整体工具拒绝规则（最高优先级，不可被任何模式覆盖）
+  const denyRule = getDenyRuleForTool(appState.toolPermissionContext, tool)
+  if (denyRule) {
+    return {
+      behavior: 'deny',
+      decisionReason: { type: 'rule', rule: denyRule },
+      message: `Permission to use ${tool.name} has been denied.`,
+    }
+  }
+
+  // 步骤 1b：整体工具询问规则（带沙箱例外）
+  const askRule = getAskRuleForTool(appState.toolPermissionContext, tool)
+  if (askRule) {
+    const canSandboxAutoAllow =
+      tool.name === BASH_TOOL_NAME &&
+      SandboxManager.isSandboxingEnabled() &&
+      SandboxManager.isAutoAllowBashIfSandboxedEnabled() &&
+      shouldUseSandbox(input)
+
+    if (!canSandboxAutoAllow) {
+      return {
+        behavior: 'ask',
+        decisionReason: { type: 'rule', rule: askRule },
+        message: createPermissionRequestMessage(tool.name),
+      }
+    }
+  }
+
+  // 步骤 1c：工具实现级权限检查（策略模式）
+  let toolPermissionResult: PermissionResult = {
+    behavior: 'passthrough',
+    message: createPermissionRequestMessage(tool.name),
+  }
+  try {
+    const parsedInput = tool.inputSchema.parse(input)  // Zod 类型校验
+    toolPermissionResult = await tool.checkPermissions(parsedInput, context)
+  } catch (e) {
+    if (e instanceof AbortError || e instanceof APIUserAbortError) throw e
+    logError(e)
+  }
+
+  // 步骤 1d：工具实现拒绝
+  if (toolPermissionResult?.behavior === 'deny') {
+    return toolPermissionResult
+  }
+
+  // 步骤 1e：需要用户交互的工具（bypass 模式也无法跳过）
+  if (tool.requiresUserInteraction?.() && toolPermissionResult?.behavior === 'ask') {
+    return toolPermissionResult
+  }
+
+  // 步骤 1f：内容级 ask 规则（免疫于 bypass 模式）
+  if (
+    toolPermissionResult?.behavior === 'ask' &&
+    toolPermissionResult.decisionReason?.type === 'rule' &&
+    toolPermissionResult.decisionReason.rule.ruleBehavior === 'ask'
+  ) {
+    return toolPermissionResult
+  }
+
+  // 步骤 1g：安全检查（.git/, .claude/, shell 配置等）
+  if (
+    toolPermissionResult?.behavior === 'ask' &&
+    toolPermissionResult.decisionReason?.type === 'safetyCheck'
+  ) {
+    return toolPermissionResult
+  }
+
+  // 步骤 2a：模式豁免（bypassPermissions 直接放行）
+  appState = context.getAppState()  // 重新获取最新状态！
+  const shouldBypassPermissions =
+    appState.toolPermissionContext.mode === 'bypassPermissions' ||
+    (appState.toolPermissionContext.mode === 'plan' &&
+      appState.toolPermissionContext.isBypassPermissionsModeAvailable)
+
+  if (shouldBypassPermissions) {
+    return {
+      behavior: 'allow',
+      updatedInput: getUpdatedInputOrFallback(toolPermissionResult, input),
+      decisionReason: { type: 'mode', mode: appState.toolPermissionContext.mode },
+    }
+  }
+
+  // 步骤 2b：全局允许规则
+  const alwaysAllowedRule = toolAlwaysAllowedRule(appState.toolPermissionContext, tool)
+  if (alwaysAllowedRule) {
+    return {
+      behavior: 'allow',
+      updatedInput: getUpdatedInputOrFallback(toolPermissionResult, input),
+      decisionReason: { type: 'rule', rule: alwaysAllowedRule },
+    }
+  }
+
+  // 步骤 3：将 passthrough 转为 ask
+  const result: PermissionDecision =
+    toolPermissionResult.behavior === 'passthrough'
+      ? { ...toolPermissionResult, behavior: 'ask' as const,
+          message: createPermissionRequestMessage(tool.name, toolPermissionResult.decisionReason) }
+      : toolPermissionResult
+
+  return result
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 类型文件提取打破循环依赖</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：权限类型在很多文件中都需要。如果直接在实现文件中定义，就会形成 <code>Tool.ts → permissions.ts → BashTool.ts → Tool.ts</code> 的循环依赖链。把纯类型提到独立的 <code>types/permissions.ts</code>，所有人都依赖类型文件，但类型文件不依赖任何人，形成了干净的单向依赖图。
+            </p>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — getAppState() 的双重调用</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：在步骤 1c（异步工具检查）之后，代码会重新调用 <code>context.getAppState()</code> 获取最新状态，而不是沿用之前的快照。这是防御性编程细节：异步操作可能改变全局状态，用旧快照做后续判断会产生"时间窗口漏洞"。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 外层包装 -->
+        <div id="code-outer" class="reveal">
+          <h3 class="content-h3">走查 2：外层包装函数与模式转换</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/utils/permissions/permissions.ts</code> L473-956<br/>
+            外层函数 <code>hasPermissionsToUseTool</code> 是装饰器，负责两大职责：<strong>模式后处理</strong> 和 <strong>Auto 模式分类器调度</strong>。
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/permissions/permissions.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="8,16,22"><code class="language-typescript">export const hasPermissionsToUseTool: CanUseToolFn = async (
+  tool, input, context, assistantMessage, toolUseID,
+): Promise&lt;PermissionDecision&gt; =&gt; {
+
+  // 调用内层决策函数
+  const result = await hasPermissionsToUseToolInner(tool, input, context)
+
+  // 成功路径：重置连续拒绝计数
+  if (result.behavior === 'allow') {
+    // ... 在 auto 模式下记录成功，重置 consecutiveDenials
+    return result
+  }
+
+  // dontAsk 模式：ask → deny 转换
+  if (result.behavior === 'ask') {
+    if (appState.toolPermissionContext.mode === 'dontAsk') {
+      return {
+        behavior: 'deny',
+        decisionReason: { type: 'mode', mode: 'dontAsk' },
+        message: DONT_ASK_REJECT_MESSAGE(tool.name),
+      }
+    }
+
+    // auto 模式：AI 分类器决策（见走查 3）
+    if (feature('TRANSCRIPT_CLASSIFIER') && (
+      appState.toolPermissionContext.mode === 'auto' || ...
+    )) {
+      // ... 分类器逻辑
+    }
+  }
+
+  return result
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — checkRuleBasedPermissions 复用内部逻辑</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>checkRuleBasedPermissions</code> 是 <code>hasPermissionsToUseToolInner</code> 的子集，专供 <code>bypassPermissions</code> 模式使用——即使绕过了大多数权限检查，安全规则和安全路径检查仍然执行。通过提取公共逻辑为独立函数，避免了代码重复，函数命名也清晰地划定了职责边界。这就像警察有"特殊通行证"，能跳过大部分安检，但还是要过金属探测器这道底线。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 Auto 模式快路径 -->
+        <div id="code-auto" class="reveal">
+          <h3 class="content-h3">走查 3：Auto 模式三级快路径 + 分类器</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/utils/permissions/permissions.ts</code> L519-927<br/>
+            Auto 模式是权限系统最复杂的部分，采用了"层层快路径"设计来优化性能：
+          </p>
+
+          <div class="mermaid-container">
+            <div class="mermaid">
+flowchart TD
+    Ask["result = 'ask'"] --> Safety["安全检查免疫?"]
+    Safety -->|"是（非classifier-approvable）"| Human["人工确认/拒绝"]
+    Safety -->|"否"| PowerShell["PowerShell?"]
+    PowerShell -->|"是（无标志）"| Human
+    PowerShell -->|"否"| Fast1["快路径1: acceptEdits 模拟"]
+    Fast1 -->|"通过"| Allow1["直接放行 fastPath=acceptEdits"]
+    Fast1 -->|"不通过"| Fast2["快路径2: 安全工具白名单"]
+    Fast2 -->|"在白名单"| Allow2["直接放行 fastPath=allowlist"]
+    Fast2 -->|"不在白名单"| API["AI 分类器 API 调用"]
+    API --> Unavailable{"分类器不可用?"}
+    Unavailable -->|"是 + fail-closed"| Deny["拒绝并提示重试"]
+    Unavailable -->|"是 + fail-open"| Human
+    API --> Block{"分类器判断拦截?"}
+    Block -->|"是"| DenialLimit["检查拒绝追踪限额"]
+    DenialLimit -->|"超限"| Fallback["回退到人工确认"]
+    DenialLimit -->|"未超限"| DenyWithReason["带原因拒绝"]
+    Block -->|"否"| Allow3["放行（分类器理由）"]
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 分层快路径的指标埋点</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：每条快路径都有不同的 <code>fastPath</code> 标签（<code>acceptEdits</code>、<code>allowlist</code>、无值表示走分类器）。这让工程师事后能分析：有多少操作命中了快路径节省了 API 调用？分类器的拦截率如何？这就像高速公路的流量传感器——不影响行车，但提供了优化的数据基础。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 Iron Gate -->
+        <div id="code-irongate" class="reveal">
+          <h3 class="content-h3">走查 4：Iron Gate（fail-closed/fail-open 策略）</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/utils/permissions/permissions.ts</code> L843-876<br/>
+            当 AI 分类器 API 不可用时，系统如何响应？
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/permissions/permissions.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="4,13,18"><code class="language-typescript">if (classifierResult.unavailable) {
+  // 读取 GrowthBook 特性值：tengu_iron_gate_closed
+  // 默认为 true（fail-closed），可远程热更新
+  if (
+    getFeatureValue_CACHED_WITH_REFRESH(
+      'tengu_iron_gate_closed',
+      true,                            // 默认值：fail-closed
+      CLASSIFIER_FAIL_CLOSED_REFRESH_MS, // 30 分钟刷新一次
+    )
+  ) {
+    // Fail-Closed 策略（默认）
+    return {
+      behavior: 'deny',
+      decisionReason: { type: 'classifier', classifier: 'auto-mode', reason: 'Classifier unavailable' },
+      message: buildClassifierUnavailableMessage(tool.name, classifierResult.model),
+    }
+  }
+
+  // Fail-Open 策略（gate = false 时）
+  return result  // 退回到正常的人工确认流程
+}</code></pre>
+          </div>
+
+          <table class="compare-table" style="margin-top: var(--space-lg);">
+            <thead>
+              <tr>
+                <th>策略</th>
+                <th>行为</th>
+                <th>优点</th>
+                <th>缺点</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Fail-Closed</strong>（默认）</td>
+                <td>拒绝操作，提示重试</td>
+                <td>安全性最高</td>
+                <td>降低可用性</td>
+              </tr>
+              <tr>
+                <td><strong>Fail-Open</strong></td>
+                <td>回退到人工确认</td>
+                <td>保持可用性</td>
+                <td>失去自动保护</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 3.5 拒绝追踪状态机 -->
+        <div id="code-denial" class="reveal">
+          <h3 class="content-h3">走查 5：拒绝追踪状态机</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/utils/permissions/denialTracking.ts</code> L1-46<br/>
+            防止 AI 进入"无限循环尝试危险操作"的自我保护机制：
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/permissions/denialTracking.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="3,4,8,9,14,19,24"><code class="language-typescript">// 两个独立的计数维度
+export type DenialTrackingState = {
+  consecutiveDenials: number  // 连续拒绝次数（被任意成功重置）
+  totalDenials: number        // 会话总拒绝次数（单调递增）
+}
+
+// 阈值配置
+export const DENIAL_LIMITS = {
+  maxConsecutive: 3,   // 连续3次被拒绝 → 触发回退
+  maxTotal: 20,        // 会话中累计20次被拒绝 → 触发回退
+} as const
+
+// 状态转移函数（纯函数，不可变）
+export function recordDenial(state: DenialTrackingState): DenialTrackingState {
+  return {
+    ...state,
+    consecutiveDenials: state.consecutiveDenials + 1,
+    totalDenials: state.totalDenials + 1,
+  }
+}
+
+export function recordSuccess(state: DenialTrackingState): DenialTrackingState {
+  if (state.consecutiveDenials === 0) return state  // 优化：无变化不创建新对象
+  return { ...state, consecutiveDenials: 0 }
+}
+
+export function shouldFallbackToPrompting(state: DenialTrackingState): boolean {
+  return (
+    state.consecutiveDenials >= DENIAL_LIMITS.maxConsecutive ||
+    state.totalDenials >= DENIAL_LIMITS.maxTotal
+  )
+}</code></pre>
+          </div>
+
+          <div class="mermaid-container" style="margin-top: var(--space-lg);">
+            <div class="mermaid">
+stateDiagram-v2
+    [*] --> Normal : 初始状态
+    Normal --> Normal : 分类器允许 / recordSuccess()
+    Normal --> Warning1 : 分类器拒绝1次
+    Warning1 --> Normal : 任意工具成功 / recordSuccess()
+    Warning1 --> Warning2 : 分类器拒绝2次
+    Warning2 --> Normal : 任意工具成功
+    Warning2 --> FallbackMode : 分类器拒绝3次（连续限制）
+    Normal --> FallbackMode : 累计拒绝达到20次（总限制）
+    FallbackMode --> [*] : 无头代理：AbortError
+    FallbackMode --> Human : 交互模式：回退到人工确认
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 连续拒绝计数的 Object.is 优化</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>recordSuccess</code> 在没有变化时返回相同的对象引用而不是新对象。React 用 <code>Object.is</code> 比较前后状态，相同引用意味着状态没变，整个组件树跳过重渲染。这就像你去超市购物，如果购物车里的东西没变，收银台就不需要重新扫描一遍——看似微小，但高频操作下节省了大量无效计算。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 危险模式检测 -->
+        <div id="code-dangerous" class="reveal">
+          <h3 class="content-h3">走查 6：危险模式检测与自动剥离</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/utils/permissions/dangerousPatterns.ts</code> + <code>permissionSetup.ts</code> L94-233<br/>
+            当用户启用 auto 模式时，某些过于宽泛的允许规则会被自动剥离：
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · dangerousPatterns.ts + permissionSetup.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,20,26"><code class="language-typescript">// 危险模式清单
+export const DANGEROUS_BASH_PATTERNS: readonly string[] = [
+  ...CROSS_PLATFORM_CODE_EXEC,  // python, node, deno, ruby, perl, php, ssh...
+  'zsh', 'fish',
+  'eval',      // eval "任意代码" — 任意代码执行的最直接形式
+  'exec',      // exec 替换当前进程
+  'env',       // env VAR=value command — 修改环境后执行
+  'xargs',     // xargs 将管道输入作为命令参数执行
+  'sudo',      // 提权执行
+]
+
+export function isDangerousBashPermission(
+  toolName: string,
+  ruleContent: string | undefined,
+): boolean {
+  if (toolName !== BASH_TOOL_NAME) return false
+
+  // 情形1：Bash（无内容）或 Bash(*) — 允许所有命令，最危险
+  if (ruleContent === undefined || ruleContent === '' || ruleContent === '*') {
+    return true
+  }
+
+  const content = ruleContent.trim().toLowerCase()
+  for (const pattern of DANGEROUS_BASH_PATTERNS) {
+    const lowerPattern = pattern.toLowerCase()
+    if (
+      content === lowerPattern ||
+      content === `${lowerPattern}:*` ||
+      content.startsWith(`${lowerPattern}:`) ||
+      content.startsWith(`${lowerPattern}*`) ||
+      content.startsWith(`${lowerPattern} `)
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+// 进入 auto 模式时：剥离危险规则，保存到 strippedDangerousRules
+context = {
+  ...context,
+  alwaysAllowRules: removesDangerousRules(context.alwaysAllowRules),
+  strippedDangerousRules: extractedDangerousRules,  // 保留备份
+}
+
+// 退出 auto 模式时：从备份恢复
+context = {
+  ...context,
+  alwaysAllowRules: merge(context.alwaysAllowRules, context.strippedDangerousRules),
+  strippedDangerousRules: undefined,
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 危险规则静默剥离与备份恢复</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：进入 auto 模式时，系统悄悄把 <code>Bash(python:*)</code> 这类危险允许规则"藏起来"，不是删掉，而是存到 <code>strippedDangerousRules</code> 备份。退出 auto 模式时再还原。这就像你进手术室前，医生会没收你的手机（防止意外），手术完成后再还给你——规则没有丢失，只是暂时被驾驭层接管了。
+            </p>
+          </div>
+        </div>
+
+        <!-- 完整数据流 -->
+        <div id="code-dataflow" class="reveal">
+          <h3 class="content-h3">权限系统的完整数据流</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant UI as "QueryEngine / UI"
+    participant Main as "hasPermissionsToUseTool()"
+    participant Inner as "hasPermissionsToUseToolInner()"
+    participant Tool as "tool.checkPermissions()"
+    participant Classifier as "AI 分类器"
+    participant Denial as "拒绝追踪"
+
+    UI->>Main: 请求执行工具（tool, input, context）
+    Main->>Inner: 委托内层决策
+    Inner->>Inner: 步骤1a: deny 规则检查
+    Inner->>Inner: 步骤1b: ask 规则检查
+    Inner->>Tool: 步骤1c: 工具实现级检查
+    Tool-->>Inner: passthrough / ask / deny
+    Inner->>Inner: 步骤1d-1g: 安全检查过滤
+    Inner->>Inner: 步骤2a: bypassPermissions 模式豁免
+    Inner->>Inner: 步骤2b: alwaysAllow 规则
+    Inner-->>Main: PermissionDecision（ask/allow/deny）
+
+    alt dontAsk 模式
+        Main->>Main: ask → deny 转换
+    else auto 模式（result = ask）
+        Main->>Main: 快路径1: acceptEdits 模拟
+        Main->>Main: 快路径2: 安全工具白名单
+        Main->>Classifier: 调用 AI 分类器
+        Classifier-->>Main: shouldBlock + reason
+        alt 分类器不可用
+            Main->>Main: fail-closed → deny / fail-open → ask
+        else 分类器拦截
+            Main->>Denial: recordDenial()
+            Denial-->>Main: 是否超限？
+            alt 超限
+                Main-->>UI: 回退到人工确认（ask）
+            else 未超限
+                Main-->>UI: deny（带分类器原因）
+            end
+        else 分类器放行
+            Main->>Denial: recordSuccess()
+            Main-->>UI: allow（带分类器原因）
+        end
+    end
+
+    Main-->>UI: 最终 PermissionDecision
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">🏗️ 4.1 Harness Engineering 视角</h3>
+          <p class="content-p">
+            权限系统是 Claude Code 驾驭层（Harness）最重要的组成部分。它不是 AI 能力的一部分，而是<strong>约束 AI 自主行为、让人类保持控制权</strong>的精密机制。
+          </p>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔒</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 多层次约束 AI 行为</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">权限决策链（<code>hasPermissionsToUseToolInner</code>）本质上是一套 AI 行为约束的漏斗：危险操作被拦截，安全操作被放行，模糊区域交给人类或 AI 分类器判断。deny 规则最优先，确保用户的禁止意愿永远被尊重。</p>
+                <div class="code-block" style="margin-top: var(--space-sm);">
+                  <div class="code-block-header">
+                    <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+                    <span class="code-block-lang">TypeScript</span>
+                    <button class="code-copy-btn" aria-label="复制代码">复制</button>
+                  </div>
+                  <pre><code class="language-typescript">// Harness 的核心：先检查明确的禁止，再考虑允许
+const denyRule = getDenyRuleForTool(appState.toolPermissionContext, tool)
+if (denyRule) return { behavior: 'deny', ... }  // 用户说不行就不行</code></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🎛️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 多模式渐进赋权</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">6 种权限模式是 Harness 层提供的"信任刻度盘"：从完全人工审核（<code>default</code>）到完全自动（<code>bypassPermissions</code>），让用户根据场景和信任度选择合适的控制力度。这体现了 Harness Engineering 的核心理念：<strong>AI 的自主度不是固定的，而是可配置的</strong>。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🤖</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. AI 分类器作为 AI 的"监考官"</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">auto 模式的三级快路径 + AI 分类器，是用一个 AI 来监督另一个 AI 的行为。分类器读取完整的对话上下文，判断 AI 当前的工具调用是否符合整体任务意图。这是 Harness Engineering 的高级形态——用 AI 驾驭 AI。</p>
+              </div>
+            </div>
+          </div>
+
+          <blockquote style="border-left: 4px solid var(--accent-purple); padding: var(--space-md) var(--space-lg); background: #faf5ff; border-radius: 0 var(--radius-md) var(--radius-md) 0; margin: var(--space-lg) 0; font-style: italic; color: var(--text-secondary);">
+            "权限系统的价值不仅在于'保护用户'，更在于让 AI 的自动化能力和人类的安全感之间找到动态平衡。"
+            <br/><span style="font-style: normal; font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary);">— Claude Code 权限设计哲学</span>
+          </blockquote>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">💡 4.2 对大模型应用的启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-blue);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 权限应该有层次，不要只有"开"和"关"</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Claude Code 的 6 种模式告诉你：真实场景的权限需求是渐进的。你的应用也可以设计"只读模式"、"受限写入模式"、"完全授权模式"，让用户根据场景选择，而不是强迫他们在"什么都不给"和"什么都给"之间二选一。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-green);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 安全检查要有"免疫条款"</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">某些安全检查（安全路径保护、用户明确配置的 ask 规则）即使在最宽松的模式下也不应该被绕过。你的应用也应该识别哪些操作是"底线"，为它们添加不可覆盖的保护层。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-orange);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. 优雅降级比硬崩更重要</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">AI 分类器不可用时，系统不是直接失败，而是 fail-closed（拒绝操作）或 fail-open（回退人工确认）。你的大模型应用也需要为 API 超时、模型不可用等情况设计兜底策略。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-cyan);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">4. 可观测性是安全的基础</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">每个权限决策都有 <code>decisionReason</code>，auto 模式的每个决定都有埋点。没有可观测性，你就不知道 AI 在做什么，更无法在出问题时快速定位原因。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-purple);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">5. 用户规则应该有"来源"信息</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>PermissionRuleSource</code> 区分了用户设置、项目设置、企业策略等来源。这让你知道一条规则"是谁给的"，在出现冲突时知道怎么处理，也能防止低优先级来源（如会话临时授权）覆盖高优先级来源（企业策略）。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">基础思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：权限决策链的顺序为什么不能随意调整？如果把"模式豁免"放到"工具检查"之前会有什么安全问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：如果模式豁免（bypassPermissions）放在工具检查之前，那么工具的 <code>checkPermissions</code> 返回的 deny 和 safetyCheck 结果就会被跳过。比如 FileEditTool 对 <code>.claude/settings.json</code> 的安全路径保护、BashTool 对危险命令的拒绝，都会失效。这意味着即使用户配置了"询问 npm publish 命令"，在 bypass 模式下也会直接执行，完全违背了"安全路径免疫于模式豁免"的设计原则。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：为什么 dontAsk 模式的转换要放在外层函数，而不是内层的决策链中？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：内层函数 <code>hasPermissionsToUseToolInner</code> 负责"纯粹的权限决策"，不涉及模式语义的转换。把 dontAsk 的 ask→deny 转换放在外层，是为了保持内层函数的单一职责——内层只问"这个操作需要什么权限"，外层再根据当前模式决定"如果需要询问，我们怎么处理"。这种分层让内层可以被 <code>checkRuleBasedPermissions</code> 等其他调用者复用，而不带入 dontAsk 的语义。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：checkRuleBasedPermissions 和 hasPermissionsToUseToolInner 有相当大的重复，为什么不直接复用？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>checkRuleBasedPermissions</code> 故意只执行步骤 1a-1g，不执行步骤 2a（bypassPermissions 豁免）和 2b（alwaysAllow 规则）。这是因为在 <code>bypassPermissions</code> 模式下，系统仍然需要检查"安全路径保护"和"用户明确的 ask 规则"——这两类规则即使在 bypass 模式下也应该执行。如果直接复用 <code>hasPermissionsToUseToolInner</code>，步骤 2a 的豁免逻辑会把这些规则也绕过。所以两份代码在语义上有本质区别，不是真正的重复。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶思考题</h3>
+
+          <div class="accordion" data-group="quiz-adv">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：acceptEdits 快路径跳过分类器，但它真的安全吗？哪些情况下分类器可能会拒绝 acceptEdits 允许的操作？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>acceptEdits</code> 模式允许文件编辑操作，但分类器在 auto 模式下会结合整个对话上下文判断意图。比如：AI 在执行一个看起来像社会工程的攻击任务（对话上下文显示 AI 在尝试修改安全配置），即使单次 FileEdit 操作本身是"常规文件编辑"，分类器也可能基于上下文拒绝。所以快路径是"操作级安全"，分类器是"意图级安全"，两者互补而非重复。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz-adv">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q5：两级拒绝追踪（连续 vs 总计）的博弈：如果只有其中一种维度会有什么问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：只有连续计数的问题：AI 可以"间歇性"地尝试危险操作——每次尝试一两次后做一个安全操作重置计数，然后再尝试，总计可以无限次尝试危险操作。只有总计计数的问题：一次偶然的误判触发了 3 次连续拒绝，AI 可能已经"卡住"，但总计数还很低，不会触发回退。当前设计用连续计数检测"短期卡住"，用总计计数防止"长期骚扰"，两个维度相互补充。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz-adv">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q6：Iron Gate 的 30 分钟刷新间隔：为什么是 30 分钟而不是更短（如 1 分钟）或更长（如 24 小时）？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>CACHED_WITH_REFRESH</code> 意味着读取时立即返回缓存值（非阻塞），同时在后台异步刷新。30 分钟是平衡"响应速度"和"策略时效性"的折中：太短（1分钟）会频繁发送网络请求影响性能；太长（24小时）意味着如果分类器服务突然恢复或需要紧急从 fail-closed 切换到 fail-open，要等很久才能生效。30 分钟是"紧急情况可以接受的响应延迟"和"正常运营的网络开销"之间的平衡点。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 进阶探索 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶探索方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 模式切换状态管理</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">探索 <strong>permissionSetup.ts</strong>：研究模式切换的副作用，特别是 plan 模式和 auto 模式之间切换的状态管理（<code>prePlanMode</code>、<code>strippedDangerousRules</code> 的完整生命周期）</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> Bash 安全检测算法</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">探索 <strong>bashSecurity.ts</strong>：研究 Bash 命令的危险模式检测算法，了解为什么某些看似无害的命令（如 <code>zmodload</code>）被标记为危险</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🤖</span> AI 分类器原理</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">探索 <strong>classifierDecision.ts</strong>：了解 AI 分类器的工作原理，它如何使用完整的对话上下文来判断一个工具调用是否危险，以及 2 阶段（fast + thinking）分类器的设计</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>⚠️</span> PowerShell 安全验证</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">探索 <strong>PowerShellTool/readOnlyValidation.ts</strong>：了解 Windows 平台特有的命令安全验证逻辑</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">
+              Claude Code 的权限系统是 AI 安全工程的精华所在，核心设计思想：
+            </p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>纵深防御</strong>：多层检查机制，任何一层都可以独立拦截危险操作</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>最小权限原则</strong>：安全路径检查和用户明确配置的规则免疫于任何模式豁免</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>优雅降级</strong>：分类器不可用 → 可配置 fail-closed/fail-open；拒绝次数过多 → 回退到人工确认</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>不可变状态 + 纯函数</strong>：<code>ToolPermissionContext</code> 只读，<code>denialTracking</code> 状态转移纯函数</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 课程导航页脚 -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="02.html" class="nav-prev">
+          ← 上一课：启动流程与初始化
+        </a>
+
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+        <a href="04.html" class="nav-next">
+          下一课：命令系统 →
+        </a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="02.html">← 上一课</a>
+        <a href="04.html">下一课 →</a>
+      </nav>
+
+      <p class="footer-copy">
+        第03课 · 权限系统 — AI 安全的核心防线 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

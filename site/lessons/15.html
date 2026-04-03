@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第15课：内存管理、监控与诊断 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 堆转储、Perfetto 追踪、OTel 遥测导出体系与 PII 脱敏安全架构，建立内存健康指标体系的思维框架。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 80px;
+    }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-15">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-15" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+    <a href="14.html">← 第14课</a>
+    <a href="16.html">第16课 →</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-orange">第五阶段 · 性能工程与可观测性</span>
+      <span class="sep">/</span>
+      <span>第15课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🧠</span>
+      <span>LESSON 15 · PHASE 05</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      内存管理<br/>
+      <span class="gradient-text">监控与诊断</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-orange">第五阶段 · 性能工程</span>
+      <span class="tag tag-orange">⏱ 建议 100 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐⭐ 专家</span>
+      <span class="tag tag-green">堆转储 · Perfetto · OTel · PII 脱敏</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>掌握 Claude Code 堆转储（Heap Dump）的完整流程，学会利用 V8 诊断数据定位内存泄漏</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>理解 Perfetto 追踪的 Chrome Trace Event 格式，能够使用 ui.perfetto.dev 分析多智能体会话性能</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>深入分析 OTel（OpenTelemetry）遥测导出体系：BigQuery、OTLP、1P 事件记录器的分层设计</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>掌握采样策略与隐私脱敏的工程实践，理解 PII 标记类型系统的设计哲学</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>理解 GC 策略与缓存生命周期管理，建立"内存健康指标体系"的思维框架</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-map">1.1 概念体系全图</a></div>
+        <div class="toc-item sub"><a href="#concept-terms">1.2 关键术语辨析</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-heap">2.1 内存诊断架构</a></div>
+        <div class="toc-item sub"><a href="#arch-telemetry">2.2 遥测导出分层</a></div>
+        <div class="toc-item sub"><a href="#arch-perfetto">2.3 Perfetto 多智能体追踪</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-diagnostics">3.1 堆转储诊断数据结构</a></div>
+        <div class="toc-item sub"><a href="#code-heapdump">3.2 performHeapDump 防御写入</a></div>
+        <div class="toc-item sub"><a href="#code-perfetto">3.3 Perfetto 环形缓冲区</a></div>
+        <div class="toc-item sub"><a href="#code-otel">3.4 OTel 动态协议导入</a></div>
+        <div class="toc-item sub"><a href="#code-firstparty">3.5 第一方事件记录器</a></div>
+        <div class="toc-item sub"><a href="#code-pii">3.6 PII 脱敏类型系统</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+        <div class="toc-item"><a href="#appendix">§6 附录</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-map" class="reveal">
+          <h3 class="content-h3">1.1 概念体系全图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    A[内存管理与监控] --> B[内存诊断]
+    A --> C[追踪与剖析]
+    A --> D[遥测导出]
+    A --> E[隐私与治理]
+
+    B --> B1[堆快照 heapsnapshot]
+    B --> B2[V8 堆统计]
+    B --> B3[内存增长速率]
+    B --> B4[GC 策略]
+
+    C --> C1[Perfetto Chrome Trace]
+    C --> C2[OTel Span/Trace]
+    C --> C3[启动 Profiler]
+
+    D --> D1[BigQuery 指标导出]
+    D --> D2[OTLP 多协议导出]
+    D --> D3[1P 事件记录器]
+    D --> D4[Datadog 日志]
+
+    E --> E1[PII 标记类型系统]
+    E --> E2[工具名脱敏]
+    E --> E3[采样与丢弃]
+    E --> E4[全局停用开关]
+
+    D3 --> D3a[落盘重试]
+    D3 --> D3b[指数退避]
+    D3 --> D3c[批量分片]
+            </div>
+          </div>
+        </div>
+
+        <div id="concept-terms" class="reveal">
+          <h3 class="content-h3">1.2 关键术语辨析</h3>
+          <table class="compare-table">
+            <thead><tr><th>术语</th><th>定义</th><th>在 Claude Code 中的含义</th></tr></thead>
+            <tbody>
+              <tr><td><strong>RSS</strong></td><td>Resident Set Size，进程实际占用的物理内存</td><td>包含 V8 堆 + Native 内存 + 代码段</td></tr>
+              <tr><td><strong>Heap Used</strong></td><td>V8 管理的活跃对象总大小</td><td>能被 heapsnapshot 捕获的部分</td></tr>
+              <tr><td><strong>External</strong></td><td>V8 外部的 ArrayBuffer / Native 绑定内存</td><td>node-pty、sharp 等 native addon 的内存</td></tr>
+              <tr><td><strong>Detached Context</strong></td><td>已删除但未被 GC 回收的 V8 Context</td><td>是 iframe/模块泄漏的关键指标</td></tr>
+              <tr><td><strong>Active Handle</strong></td><td>保持事件循环运转的资源（Timer/Socket/Pipe）</td><td>>100 个时提示潜在的 Timer/Socket 泄漏</td></tr>
+              <tr><td><strong>Delta Temporality</strong></td><td>OTel 指标每次导出的增量（而非累积值）</td><td>避免产品仪表盘被累积值破坏</td></tr>
+              <tr><td><strong>PII</strong></td><td>个人身份信息</td><td>MCP 工具名、用户 ID、代码路径等</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-heap" class="reveal">
+          <h3 class="content-h3">2.1 内存诊断架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant User as 用户/自动触发
+    participant Cmd as /heapdump 命令
+    participant Svc as heapDumpService
+    participant Diag as captureMemoryDiagnostics
+    participant V8 as V8 API
+    participant FS as 文件系统
+
+    User->>Cmd: /heapdump 或 RSS > 1.5GB
+    Cmd->>Svc: performHeapDump(trigger, dumpNumber)
+    Svc->>Diag: 先采集诊断（此时堆最"干净"）
+    Diag->>V8: getHeapStatistics() + getHeapSpaceStatistics()
+    Diag->>Diag: 分析 detachedContexts, activeHandles, RSS-heapUsed
+    Diag-->>Svc: 返回 MemoryDiagnostics
+    Svc->>FS: 写入 diagnostics.json（廉价，先写）
+    Svc->>V8: getHeapSnapshot() 或 Bun.generateHeapSnapshot()
+    Svc->>FS: 写入 .heapsnapshot（昂贵，后写）
+            </div>
+          </div>
+          <div class="callout callout-tip reveal" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 核心设计思想：防御性顺序</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>"先写廉价的，再写昂贵的。"</strong> 堆快照序列化（<code>getHeapSnapshot()</code>）对于大堆可能消耗数 GB 内存，并在序列化过程中分配大量临时对象，极端情况下会 OOM 崩溃。通过先写入诊断 JSON（几 KB），即使快照写入失败，也能保留最关键的内存统计数据，让运维人员有数据可分析。
+            </p>
+          </div>
+        </div>
+
+        <div id="arch-telemetry" class="reveal">
+          <h3 class="content-h3">2.2 遥测导出分层架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph 应用层
+        App[应用代码] -->|logEvent| API[analytics/index.ts]
+    end
+
+    subgraph 路由层
+        API -->|附加后| Sink[analytics/sink.ts]
+        Sink -->|采样决策| Sample{shouldSampleEvent}
+        Sample -->|保留| Route{路由判断}
+        Route -->|stripProtoFields| DD[Datadog]
+        Route -->|完整字段| FP[1P 事件记录器]
+    end
+
+    subgraph 导出层
+        DD -->|HTTP POST| DDApi[Datadog API]
+        FP -->|OTel BatchProcessor| Exp[FirstPartyEventLoggingExporter]
+        Exp -->|成功| BQ[/api/event_logging/batch]
+        Exp -->|失败| Disk[落盘 JSONL]
+        Disk -->|下次启动| Retry[指数退避重试]
+    end
+            </div>
+          </div>
+          <table class="arch-table" style="margin-top: var(--space-lg);">
+            <thead><tr><th>层次</th><th>职责</th><th>不耦合的理由</th></tr></thead>
+            <tbody>
+              <tr><td><strong>入口 API</strong></td><td>无依赖的纯接口，事件队列</td><td>避免循环依赖，启动路径零成本</td></tr>
+              <tr><td><strong>路由层</strong></td><td>采样、脱敏、后端分发</td><td>可热替换，测试时可 mock</td></tr>
+              <tr><td><strong>导出层</strong></td><td>协议适配、重试、持久化</td><td>每种后端独立演化，互不影响</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="arch-perfetto" class="reveal">
+          <h3 class="content-h3">2.3 Perfetto 多智能体追踪架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph LR
+    subgraph "主进程 (pid=1)"
+        Main[main agent]
+        MainSpans[API Call spans<br/>Tool spans<br/>User wait spans]
+    end
+
+    subgraph "子智能体 (pid=2,3...)"
+        Sub1[subagent-1]
+        Sub2[subagent-2]
+    end
+
+    subgraph "追踪文件"
+        Meta[Metadata Events<br/>process_name<br/>thread_name<br/>parent_agent]
+        Events[Trace Events<br/>B/E/X/i/C/M]
+    end
+
+    Main -->|emitProcessMetadata| Meta
+    Sub1 -->|registerAgent| Meta
+    Sub2 -->|registerAgent| Meta
+    Main -->|startLLMRequestPerfettoSpan| Events
+    Sub1 -->|endSpan| Events
+    Events -->|合并| TraceDoc[Chrome Trace JSON]
+    TraceDoc --> Perfetto[ui.perfetto.dev]
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 堆转储诊断数据结构 -->
+        <div id="code-diagnostics" class="reveal">
+          <h3 class="content-h3">3.1 堆转储服务：诊断数据结构设计</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/heapDumpService.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · MemoryDiagnostics 类型定义</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="12,13,20,21"><code class="language-typescript">export type MemoryDiagnostics = {
+  timestamp: string
+  sessionId: string
+  trigger: 'manual' | 'auto-1.5GB'
+  dumpNumber: number
+
+  memoryUsage: {
+    heapUsed: number          // V8 堆活跃对象 → 能在 heapsnapshot 中找到
+    heapTotal: number
+    external: number          // Native 绑定内存 → 不在 heapsnapshot 中！
+    arrayBuffers: number
+    rss: number               // 进程总物理内存
+  }
+
+  memoryGrowthRate: {
+    bytesPerSecond: number
+    mbPerHour: number         // 换算为 MB/小时，方便判断泄漏速度
+  }
+
+  v8HeapStats: {
+    detachedContexts: number  // ⚠️ 关键泄漏指标：已分离但未回收的 Context
+    nativeContexts: number
+    heapSizeLimit: number
+    mallocedMemory: number
+    peakMallocedMemory: number
+  }
+
+  activeHandles: number       // ⚠️ 活跃 Handle 数（Timer/Socket/Pipe）
+  activeRequests: number
+  openFileDescriptors?: number // Linux 专属
+
+  analysis: {
+    potentialLeaks: string[]  // 自动分析出的泄漏提示
+    recommendation: string
+  }
+
+  smapsRollup?: string        // Linux 专属：/proc/self/smaps_rollup
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 防御性诊断数据结构</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>MemoryDiagnostics</code> 把能收集的内存指标统统放进去，包括"RSS - heapUsed = nativeMemory"这个推算值。这就像医院的全身体检报告——比你"觉得哪里不舒服"再去单查更全面。<code>analysis.potentialLeaks</code> 字段直接给出分析结论，运维不需要手动查阈值表。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：出问题时只有原始数字，值班工程师凌晨两点对着 RSS=1.5GB 不知道该看哪里，还需要翻文档查阈值、手算 nativeMemory，排查时间翻倍。
+            </p>
+          </div>
+
+          <h3 class="content-h3" style="margin-top: var(--space-xl);">自动分析阈值的工程选择</h3>
+          <table class="arch-table">
+            <thead><tr><th>指标</th><th>阈值</th><th>选择依据</th></tr></thead>
+            <tbody>
+              <tr><td>activeHandles &gt; 100</td><td>100</td><td>正常的 Node.js 应用约有 5-20 个 Handle；>100 明显异常</td></tr>
+              <tr><td>nativeMemory &gt; heapUsed</td><td>1x</td><td>RSS 中非堆部分超过堆本身，Native 泄漏概率高</td></tr>
+              <tr><td>mbPerHour &gt; 100</td><td>100 MB/h</td><td>按 8 小时工作日计算，会增长 800MB，不可接受</td></tr>
+              <tr><td>openFDs &gt; 500</td><td>500</td><td>默认 fd 上限 1024，超 500 说明资源释放有问题</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 3.2 performHeapDump -->
+        <div id="code-heapdump" class="reveal">
+          <h3 class="content-h3">3.2 performHeapDump：防御性写入顺序</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · performHeapDump + 跨运行时快照</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="4,8,11,15"><code class="language-typescript">export async function performHeapDump(
+  trigger: 'manual' | 'auto-1.5GB' = 'manual',
+): Promise&lt;HeapDumpResult&gt; {
+  // STEP 1: 先采集诊断（在任何其他 I/O 之前！）
+  const diagnostics = await captureMemoryDiagnostics(trigger)
+
+  // STEP 2: 先写诊断 JSON（几 KB，几乎不会失败）
+  await writeFile(diagPath, jsonStringify(diagnostics, null, 2), { mode: 0o600 })
+
+  // STEP 3: 再写堆快照（可能几百 MB，可能 OOM 崩溃）
+  await writeHeapSnapshot(heapPath)
+
+  return { success: true, heapPath, diagPath }
+}
+
+async function writeHeapSnapshot(filepath: string): Promise&lt;void&gt; {
+  if (typeof Bun !== 'undefined') {
+    // Bun：同步写入避免跨线程复制大字符串
+    writeFileSync(filepath, Bun.generateHeapSnapshot('v8', 'arraybuffer'), { mode: 0o600 })
+    // 主动 GC：防止快照中间对象触发下一次自动转储（自我循环）
+    Bun.gc(true)
+    return
+  }
+  // Node.js：流式 API，内存效率更高
+  const writeStream = createWriteStream(filepath, { mode: 0o600 })
+  const heapSnapshotStream = getHeapSnapshot()
+  await pipeline(heapSnapshotStream, writeStream)
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 先写廉价再写昂贵的防御性顺序</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：先写几 KB 的诊断 JSON，再写几百 MB 的堆快照。就像考试先把会的题做了，不会的题放后面——即使最后没时间做完（OOM 崩溃），已完成的部分（诊断数据）还在。Bun 下写完快照立即 <code>Bun.gc(true)</code> 主动释放，防止堆快照的中间对象反过来触发下一次自动转储（自我循环）。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：先写堆快照，OOM 崩溃时什么诊断信息都没有，运维面对一个空目录；或者不主动 GC，堆快照产生的几百 MB 临时对象积压，触发再一次自动转储，系统陷入转储循环。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 Perfetto 环形缓冲区 -->
+        <div id="code-perfetto" class="reveal">
+          <h3 class="content-h3">3.3 Perfetto 追踪：事件环形缓冲区设计</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/telemetry/perfettoTracing.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · 环形缓冲区 + 三重退出保障</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="5,11,14,21,25,28"><code class="language-typescript">const metadataEvents: TraceEvent[] = []  // 不被淘汰（进程/线程名等）
+const events: TraceEvent[] = []          // 有上限，超出时淘汰旧事件
+const MAX_EVENTS = 100_000               // 100,000 × ~300B/条 ≈ 30MB
+
+function evictOldestEvents(): void {
+  if (events.length &lt; MAX_EVENTS) return
+  // 一次淘汰 50%：平均 50,000 次 push 才需要一次重操作，摊销代价低
+  const dropped = events.splice(0, MAX_EVENTS / 2)
+  // 插入标记事件：让 Perfetto UI 显示"这里有数据丢失"
+  events.unshift({
+    name: 'trace_truncated', cat: '__metadata', ph: 'i',
+    ts: dropped[dropped.length - 1]?.ts ?? 0, pid: 1, tid: 0,
+    args: { dropped_events: dropped.length },
+  })
+}
+
+export function initializePerfettoTracing(): void {
+  // 保障1：cleanupRegistry（正常退出路径）
+  registerCleanup(async () =&gt; { await writePerfettoTrace() })
+
+  // 保障2：process.beforeExit（事件循环清空时）
+  process.on('beforeExit', () =&gt; { void writePerfettoTrace() })
+
+  // 保障3：process.exit（最后兜底，同步写入）
+  process.on('exit', () =&gt; {
+    if (!traceWritten) writePerfettoTraceSync()
+  })
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 三重退出保障 + 摊销淘汰</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：三个进程退出钩子覆盖了从优雅关闭到强制退出的所有路径，就像三道安全门——任意一道都能确保追踪文件写入。摊销淘汰（一次删 50% 而不是 1 条）让 100,000 次 push 只有一次 O(n/2) 的重操作，平均下来接近 O(1)。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：只有一个退出钩子的追踪系统，Ctrl+C 时可能丢失最后几分钟的数据；每次 push 都检查是否超限并删一条，在高频场景下每次 push 都是 O(n) 操作，追踪代码本身成了性能瓶颈。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 OTel 动态协议导入 -->
+        <div id="code-otel" class="reveal">
+          <h3 class="content-h3">3.4 OTel 遥测导出：动态协议选择与懒加载</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/telemetry/instrumentation.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · 动态协议导入 + Delta 时间性</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="6,12,17,28"><code class="language-typescript">// 文件头注释：OTLP/Prometheus exporters 是动态导入的
+// 静态导入会加载所有 6 个导出器（~1.2MB），但每个进程只用 1-2 种
+async function getOtlpReaders() {
+  const exporterTypes = parseExporterTypes(process.env.OTEL_METRICS_EXPORTER)
+
+  for (const exporterType of exporterTypes) {
+    if (exporterType === 'otlp') {
+      const protocol = process.env.OTEL_EXPORTER_OTLP_PROTOCOL?.trim()
+
+      switch (protocol) {
+        case 'grpc': {
+          // @grpc/grpc-js 约 700KB，只在需要 gRPC 时才加载
+          const { OTLPMetricExporter } = await import(
+            '@opentelemetry/exporter-metrics-otlp-grpc'
+          )
+          break
+        }
+        case 'http/protobuf': {
+          const { OTLPMetricExporter } = await import(
+            '@opentelemetry/exporter-metrics-otlp-proto'
+          )
+          break
+        }
+      }
+    }
+  }
+}
+
+// BigQuery 导出器必须用 DELTA 时间性
+selectAggregationTemporality(): AggregationTemporality {
+  // ⚠️ DO NOT CHANGE THIS TO CUMULATIVE
+  // CUMULATIVE 会让 BigQuery SUM 聚合产生 1+2+3+...+N 的天文数字
+  return AggregationTemporality.DELTA
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 动态协议导入 + Delta 时间性</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>grpc</code> 依赖包约 700KB，用动态导入只在真正需要 gRPC 时才加载，其他协议用户的启动时间不受影响。DELTA 指标语义上等同于"这段时间内新增了多少"，BigQuery SUM 聚合才有意义——注释里大写加粗的 "DO NOT CHANGE" 就是给未来的你看的，防止一次无心的"优化"把 dashboard 搞坏。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：静态导入所有协议变体，哪怕你只用 HTTP，也要加载 gRPC 的 700KB 依赖，CLI 启动变慢。用 CUMULATIVE 后 BigQuery 的指标仪表盘数字会随进程累积单调增长，A/B 实验的对照/实验组增量计算全部错误。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 第一方事件记录器 -->
+        <div id="code-firstparty" class="reveal">
+          <h3 class="content-h3">3.5 第一方事件记录器：可靠性工程</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/analytics/firstPartyEventLoggingExporter.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · 退避重试状态机 + 短路失败优化</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="8,11,18,20"><code class="language-typescript">private async doExport(logs, resultCallback): Promise&lt;void&gt; {
+  const failedEvents = await this.sendEventsInBatches(events)
+
+  if (failedEvents.length &gt; 0) {
+    // 失败路径：先落盘，再安排退避重试
+    await this.queueFailedEvents(failedEvents)
+    this.scheduleBackoffRetry()
+    resultCallback({ code: ExportResultCode.FAILED })
+    return
+  }
+  // 成功路径：重置退避，立即重试之前积压的失败事件
+  this.resetBackoff()
+  void this.retryFailedEvents()
+  resultCallback({ code: ExportResultCode.SUCCESS })
+}
+
+private async sendEventsInBatches(events): Promise&lt;FailedEvents[]&gt; {
+  const batches = chunk(events, this.maxBatchSize)
+  const failedBatchEvents: FailedEvents[] = []
+
+  for (let i = 0; i &lt; batches.length; i++) {
+    const success = await this.sendBatch(batches[i])
+
+    if (!success) {
+      // 短路：首个批次失败 → 假设服务不可用
+      // 将剩余未发送的批次直接加入失败队列，不再浪费网络请求
+      failedBatchEvents.push(...batches.slice(i).flat())
+      break
+    }
+  }
+
+  return failedBatchEvents
+}</code></pre>
+          </div>
+
+          <div class="mermaid-container reveal" style="margin-top: var(--space-lg);">
+            <div class="mermaid">
+stateDiagram-v2
+    [*] --> Idle: 初始化
+    Idle --> Exporting: export() 调用
+    Exporting --> Idle: 全部成功（重置退避）
+    Exporting --> Backoff: 部分/全部失败
+    Backoff --> Exporting: 退避等待结束（指数增长）
+    Exporting --> Dropped: attempts >= maxAttempts
+    Idle --> RetryPrev: 启动时检测到上次失败文件
+    RetryPrev --> Idle: 重试成功
+    RetryPrev --> Backoff: 重试失败
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 可靠消息传输三段式 + 短路优化</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：发送→失败落盘→退避重试，就像快递寄失败了不直接扔掉，而是放在仓库等下次重发。短路优化（第一批失败就不发后面的）是"快速放弃"原则——服务端挂了，继续发只是浪费自己的时间。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：无落盘机制，网络故障期间的遥测事件永久丢失；没有短路，服务端挂了还要等所有批次超时，整个导出流程卡住几十秒。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 PII 脱敏类型系统 -->
+        <div id="code-pii" class="reveal">
+          <h3 class="content-h3">3.6 隐私脱敏：类型系统驱动的安全架构</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/analytics/metadata.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · PII 标记类型系统 + 懒复制优化</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,3,8,16,19"><code class="language-typescript">// 双层 Marker 类型系统：类型名即审查记录
+export type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = never
+export type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED = never
+
+// MCP 工具名脱敏：server 名可能包含用户私有配置
+export function sanitizeToolNameForAnalytics(toolName: string) {
+  if (toolName.startsWith('mcp__')) {
+    return 'mcp_tool' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+  }
+  return toolName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
+}
+
+// 懒复制（Copy-on-Detect）模式
+export function stripProtoFields&lt;V&gt;(metadata: Record&lt;string, V&gt;): Record&lt;string, V&gt; {
+  let result: Record&lt;string, V&gt; | undefined
+
+  for (const key in metadata) {
+    if (key.startsWith('_PROTO_')) {
+      // 只有在找到 _PROTO_ 字段时才分配新对象
+      if (result === undefined) result = { ...metadata }
+      delete result[key]
+    }
+  }
+
+  return result ?? metadata  // 99% 情况：原始引用，零内存分配
+}</code></pre>
+          </div>
+
+          <div class="mermaid-container reveal" style="margin-top: var(--space-lg);">
+            <div class="mermaid">
+flowchart TD
+    T[工具被调用] --> A{是 MCP 工具？}
+    A -->|是| B{满足详细日志条件？}
+    A -->|否| C[保留内置工具名]
+    B -->|官方 MCP 或特殊条件| D[记录完整 server+tool 名]
+    B -->|用户自定义 MCP| E[脱敏为 mcp_tool]
+    C --> F[logEvent]
+    D --> F
+    E --> F
+    F --> G{_PROTO_ 字段？}
+    G -->|含有| H[仅发往 1P 通道]
+    G -->|不含| I[Datadog + 1P]
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 类型系统驱动的安全审查</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS = never</code> 这个类型名字就是审查记录，任何往分析接口里传字符串的开发者都必须通过类型断言"宣誓"自己已经确认过数据安全。编译器不会累，不会漏看。<code>stripProtoFields</code> 的懒复制让 99% 没有 PII 的事件零开销通过。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：依靠人工 Review 检查隐私数据，某个开发者加了一个包含文件路径的字段没人发现，用户的私有代码路径上报到 Datadog，合规风险。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 Harness Engineering 视角</h3>
+          <p class="content-p">
+            本课的源码展示了一种"<strong>可观测优先</strong>"的工程哲学——先把诊断能力建设好，问题发生时才有抓手。<code>MemoryDiagnostics</code> 结构体就是一份标准化的"健康报告单"，你不需要在 OOM 发生后才开始慌乱找日志，而是在任意时刻都能用 <code>/heapdump</code> 拿到一份结构化的快照。这就是驾驭（Harness）内存的本质：<strong>不是防止问题发生，而是确保问题发生时你能立刻看清楚</strong>。
+          </p>
+          <div class="callout callout-info reveal">
+            <div class="callout-title"><span>🔗</span> 可靠消息传输三段式</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); margin-top: var(--space-md);">
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-blue); margin-bottom: 6px;">📤 发送</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">短路优化：第一批失败就快速进入退避，不浪费网络请求</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-green); margin-bottom: 6px;">💾 落盘</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">BATCH_UUID 防止自我干扰，失败事件持久化到 JSONL 文件</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-orange); margin-bottom: 6px;">🔄 退避重试</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">指数退避 + 最大重试次数，下次启动时自动捡起上次失败文件</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-purple); margin-bottom: 6px;">🛡️ 安全栏杆</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">最大尝试次数防止无限循环，BATCH_UUID 防止重试干扰当前会话</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🏥</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 1：诊断先于功能</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">你的 AI 应用在生产上遇到内存增长时，如果没有预先埋点，你只能猜。在 Agent 启动时就开始采集内存基线，每隔固定时间检查增长速率，超阈值时自动触发堆转储。这是主动防御，不是事后补救。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔐</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 2：类型系统是最便宜的 Code Review</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">编译器不会累，不会漏看。隐私合规检查如果只靠人工 Review，早晚会出问题。把安全约束编码进类型，让编译器替你站岗。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⚡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 3：摊销设计让热路径不卡顿</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">追踪事件的批量淘汰（每次淘汰 50%）而不是每次 push 都检查，就是为了让高频路径保持 O(1)。你的 AI 应用如果有高频日志记录，也要考虑批量写盘而不是每条实时落盘。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-cyan);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📊</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 4：Delta 还是 Cumulative，这是个承诺</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">你的监控指标一旦上线，就很难改聚合方式，因为历史数据的语义会变。在设计阶段就写清楚"这个指标是 delta 语义，不要改成 cumulative"，比事后在 PR 里发现问题要便宜得多。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：<code>diagnostics.json</code> 为什么必须在 <code>.heapsnapshot</code> 之前写入？如果顺序颠倒会怎样？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>.heapsnapshot</code> 可能高达几百 MB，写入时本身也会消耗内存，如果在低内存场景下写快照失败甚至触发 OOM，后续的 <code>diagnostics.json</code>（包含 <code>heapUsed</code>、<code>detachedContexts</code> 等关键诊断字段）就永远写不进去了。而 <code>diagnostics.json</code> 只有几 KB，几乎不会失败。先写轻量的，再写重量的，这是"防御性写入顺序"——即使后续步骤失败，你至少还有最基础的诊断数据能读取，不会两手空空。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：Perfetto 的 <code>metadataEvents</code> 和 <code>events</code> 为什么要分开存储？如果合并存储会有什么问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>metadataEvents</code> 存储进程名、线程名等 M 类事件，Perfetto UI 需要它们来渲染轨道标签。如果合并存储，当 <code>events</code> 超限触发批量淘汰（<code>splice(0, MAX/2)</code>）时，M 类事件会被随机淘汰。结果就是 Perfetto 里所有轨道变成 "Process 2"、"Thread 1234" 这样的匿名数字，追踪数据完全无法阅读。元数据量是有界的（每个 Agent 约 3 个 M 类事件），单独维护没有内存风险，但能保证可读性。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：<code>interval.unref()</code> 的作用是什么？如果不调用它，会发生什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Node.js 的事件循环只有在还有"活跃工作"时才不退出，<code>setInterval</code> 创建的定时器默认是"活跃的"，会阻止进程退出。<code>unref()</code> 把定时器标记为"弱引用"——如果它是唯一剩余的工作，进程可以正常退出。如果不调用，用户 Ctrl+C 后，即使所有业务逻辑已完成，事件循环仍会被 Perfetto 的写盘定时器保活，进程就是退不掉，只能 kill -9。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4（进阶）：<code>BATCH_UUID</code> 机制解决了自我干扰问题，但如果同一会话同时启动了两个进程，会发生什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：两个进程各自有不同的 <code>BATCH_UUID</code>，所以互不干扰——进程 A 不会捡起进程 B 的落盘文件，反之亦然。但这两个进程会并发写入同一个 sessionId 的分析事件，导致事件重复上报、计数翻倍。<code>BATCH_UUID</code> 的设计目标仅是防止单进程的自我干扰，不是防止多进程竞争。这种情况下，需要更上层的进程锁或单例检测来阻止同一会话多次启动。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q5（架构）：BigQuery 指标导出器中，如果 <code>selectAggregationTemporality</code> 被改为 <code>CUMULATIVE</code>，会产生什么具体的数据错误？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：DELTA 语义下，每个数据点代表"这段时间内新增了多少"，BigQuery 按天求和得到当日总量。改为 CUMULATIVE 后，每个数据点代表"从程序启动到现在的累积量"，BigQuery 再求和就变成了"把一个递增数列加起来"，结果会是 1+2+3+...+N 这样的三角数，完全失真。仪表板上的"今日 API 调用次数"会变成一个持续膨胀的天文数字，A/B 实验对照组的数据差异会被噪声完全掩盖，无法做任何有意义的分析。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> Chrome DevTools 堆快照分析</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">掌握 Summary/Comparison/Containment/Statistics 四种视图，从 <code>.heapsnapshot</code> 文件中找到内存泄漏源</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> Perfetto UI 深度使用</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">访问 ui.perfetto.dev，学习 SQL 查询（Perfetto 支持 SQLite 查询 trace）和火焰图分析</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> OpenTelemetry 规范阅读</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 OTel 指标聚合时间性规范，理解 DELTA vs CUMULATIVE 的完整语义</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔌</span> 可观测性三支柱</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 Metrics / Logs / Traces 三者在故障诊断中的互补关系，Claude Code 同时使用了这三者的典型模式</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §6 附录 -->
+      <section class="content-section" id="appendix">
+        <div class="reveal">
+          <p class="section-label">Section 06</p>
+          <h2 class="content-h2">附录：内存健康指标阈值速查</h2>
+        </div>
+        <div class="reveal">
+          <table class="arch-table">
+            <thead><tr><th>指标</th><th>正常范围</th><th>警戒</th><th>严重</th></tr></thead>
+            <tbody>
+              <tr><td>Heap Used</td><td>&lt; 500MB</td><td>500-1000MB</td><td>&gt; 1000MB（自动转储触发：1500MB）</td></tr>
+              <tr><td>Detached Contexts</td><td>0</td><td>1-5</td><td>&gt; 5</td></tr>
+              <tr><td>Active Handles</td><td>&lt; 50</td><td>50-100</td><td>&gt; 100</td></tr>
+              <tr><td>Open FDs（Linux）</td><td>&lt; 200</td><td>200-500</td><td>&gt; 500</td></tr>
+              <tr><td>Memory Growth Rate</td><td>&lt; 50 MB/h</td><td>50-100 MB/h</td><td>&gt; 100 MB/h</td></tr>
+              <tr><td>Native Memory / Heap</td><td>&lt; 0.5x</td><td>0.5-1x</td><td>&gt; 1x</td></tr>
+            </tbody>
+          </table>
+
+          <h3 class="content-h3" style="margin-top: var(--space-xl);">Perfetto 事件类型速查</h3>
+          <table class="arch-table">
+            <thead><tr><th>ph 值</th><th>名称</th><th>用途</th><th>配对</th></tr></thead>
+            <tbody>
+              <tr><td><code>B</code></td><td>Begin</td><td>开始一个持续事件</td><td>需 E 关闭</td></tr>
+              <tr><td><code>E</code></td><td>End</td><td>结束一个持续事件</td><td>配合 B</td></tr>
+              <tr><td><code>X</code></td><td>Complete</td><td>完整事件（含 dur）</td><td>单独使用</td></tr>
+              <tr><td><code>i</code></td><td>Instant</td><td>瞬时事件（单点）</td><td>单独使用</td></tr>
+              <tr><td><code>C</code></td><td>Counter</td><td>计数器值变化</td><td>单独使用</td></tr>
+              <tr><td><code>M</code></td><td>Metadata</td><td>进程/线程名称</td><td>单独使用</td></tr>
+            </tbody>
+          </table>
+          <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-md);">
+            <em>本课源码文件：<code>src/utils/heapDumpService.ts</code>、<code>src/utils/telemetry/perfettoTracing.ts</code>、<code>src/utils/telemetry/bigqueryExporter.ts</code>、<code>src/utils/telemetry/instrumentation.ts</code>、<code>src/services/analytics/firstPartyEventLoggingExporter.ts</code>、<code>src/services/analytics/metadata.ts</code></em>
+          </p>
+        </div>
+      </section>
+
+      <!-- 课程导航页脚 -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="14.html" class="nav-prev">← 第14课：启动性能优化</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="16.html" class="nav-next">下一课：插件系统架构 →</a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="14.html">← 第14课</a>
+        <a href="16.html">第16课 →</a>
+      </nav>
+      <p class="footer-copy">第15课 · 内存管理、监控与诊断 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

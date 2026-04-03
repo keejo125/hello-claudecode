@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第17课：服务层集成（MCP/LSP/OAuth）| Claude Code 教程</title>
+  <meta name="description" content="深入理解 Claude Code 服务层架构：API 重试策略、InProcessTransport、LSP 状态机、OAuth PKCE 完整流程与诊断三层过滤漏斗。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- 导航栏 -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+    <a href="16.html">← 上一课</a>
+    <a href="18.html">下一课 →</a>
+  </nav>
+</header>
+
+<!-- Hero 区域 -->
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第六阶段 · 高级功能与系统集成</span>
+      <span class="sep">/</span>
+      <span>第17课</span>
+    </nav>
+
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🔌</span>
+      <span>LESSON 17 · PHASE 06</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      服务层集成<br/>
+      <span class="gradient-text">MCP / LSP / OAuth</span>
+    </h1>
+
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第六阶段 · 高级功能与系统集成</span>
+      <span class="tag tag-orange">⏱ 建议 5-6 小时</span>
+      <span class="tag tag-red">⭐⭐⭐⭐⭐ 专家级</span>
+      <span class="tag tag-cyan">5 大服务 · 协议集成</span>
+    </div>
+
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>掌握 API 客户端的健壮性设计：重试策略、指数退避、529 分类处理与多提供商切换</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>深入理解 MCP 协议集成：InProcessTransport、多传输类型、XAA 认证机制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>理解 LSP 集成的分层设计：Manager → Instance → Client 三层架构与被动诊断反馈</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>掌握 OAuth 2.0 PKCE 完整流程：授权码交换、令牌刷新、安全存储与跨平台差异</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>理解内存服务设计：事件队列、采样脱敏、多后端导出的遥测架构</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 主体布局 -->
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <!-- 侧边栏 -->
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-position">1.1 服务层位置</a></div>
+        <div class="toc-item sub"><a href="#concept-protocols">1.2 关键协议概览</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 整体架构图</a></div>
+        <div class="toc-item sub"><a href="#arch-retry-reason">2.2 为何需要复杂重试</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-retry">3.1 API 重试策略</a></div>
+        <div class="toc-item sub"><a href="#code-inprocess">3.2 InProcessTransport</a></div>
+        <div class="toc-item sub"><a href="#code-lsp">3.3 LSP 状态机</a></div>
+        <div class="toc-item sub"><a href="#code-oauth">3.4 OAuth PKCE 流程</a></div>
+        <div class="toc-item sub"><a href="#code-diagnostic">3.5 诊断三层过滤</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-position" class="reveal">
+          <h3 class="content-h3">1.1 服务层的位置与职责</h3>
+          <p class="content-p">
+            Claude Code 的服务层位于业务逻辑层（工具、命令）和网络层（HTTP/WebSocket）之间，
+            承担与不可靠外部世界交互的全部复杂性。
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">Architecture · 服务层位置</span>
+            </div>
+            <pre><code class="language-text">业务逻辑层（Tools/Commands）
+       ↓
+服务层（Services）
+  ├── API 客户端    ← Anthropic 模型调用、重试、限流
+  ├── MCP 客户端    ← Model Context Protocol 工具调用
+  ├── OAuth 客户端  ← 认证、令牌管理
+  ├── LSP 管理器    ← 语言服务器协议集成
+  └── 分析服务     ← 遥测、事件记录
+       ↓
+传输层（HTTP/WebSocket/STDIO）</code></pre>
+          </div>
+        </div>
+
+        <div id="concept-protocols" class="reveal">
+          <h3 class="content-h3">1.2 关键协议概览</h3>
+          <table class="arch-table">
+            <thead>
+              <tr><th>协议</th><th>全称</th><th>用途</th><th>传输方式</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tag tag-blue">MCP</span></td>
+                <td>Model Context Protocol</td>
+                <td>工具/资源/提示调用</td>
+                <td><code>SSE/HTTP/WS/STDIO</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-green">LSP</span></td>
+                <td>Language Server Protocol</td>
+                <td>代码智能（跳转/补全/诊断）</td>
+                <td><code>STDIO (subprocess)</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-orange">OAuth 2.0 PKCE</span></td>
+                <td>Proof Key for Code Exchange</td>
+                <td>用户认证与授权</td>
+                <td><code>HTTP redirect</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 服务层整体架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+subgraph "API 服务"
+  CLAUDE["claude.ts<br/>消息编排/缓存/遥测"]
+  CLIENT["client.ts<br/>多提供商客户端工厂"]
+  RETRY["withRetry.ts<br/>重试/退避/限流"]
+  FILES["filesApi.ts<br/>文件上传下载"]
+end
+
+subgraph "MCP 服务"
+  MCP_C["client.ts<br/>连接管理/工具调用"]
+  MCP_AUTH["auth.ts<br/>OAuth/XAA 认证"]
+  MCP_CFG["config.ts<br/>策略/去重/环境变量"]
+  INPROC["InProcessTransport<br/>进程内通信"]
+  HYBRID["HybridTransport<br/>WS读+HTTP写"]
+end
+
+subgraph "OAuth 服务"
+  OAUTH["index.ts + client.ts<br/>授权码流程"]
+  STORAGE["secureStorage<br/>跨平台令牌持久化"]
+  PORT["oauthPort.ts<br/>回调端口管理"]
+end
+
+subgraph "LSP 服务"
+  LSP_M["LSPServerManager<br/>多服务器路由"]
+  LSP_I["LSPServerInstance<br/>单实例生命周期"]
+  LSP_C["LSPClient<br/>JSON-RPC 通信"]
+  DIAG["LSPDiagnosticRegistry<br/>去重/限流/投递"]
+end
+
+subgraph "分析服务"
+  ANALYTICS["index.ts<br/>事件队列/后端导出"]
+  DD["datadog.ts"]
+  FIRSTP["firstPartyEventLogger.ts"]
+end
+
+CLAUDE --> RETRY
+CLAUDE --> CLIENT
+MCP_C --> MCP_AUTH
+MCP_C --> MCP_CFG
+MCP_C --> INPROC
+MCP_C --> HYBRID
+OAUTH --> STORAGE
+OAUTH --> PORT
+LSP_M --> LSP_I
+LSP_I --> LSP_C
+ANALYTICS --> DD
+ANALYTICS --> FIRSTP
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-retry-reason" class="reveal">
+          <h3 class="content-h3">2.2 为什么服务层需要如此复杂的重试逻辑？</h3>
+          <p class="content-p">
+            Anthropic API 在生产环境下会出现多种瞬态错误，不同错误需要完全不同的处理策略：
+          </p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 20px; margin-bottom: var(--space-sm);">🔴</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">529（过载）</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">服务器容量不足，应该指数退避重试，但需区分前台/后台场景</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 20px; margin-bottom: var(--space-sm);">🟡</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">429（限流）</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">请求过频，需要等待，按 Retry-After 头部控制</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 20px; margin-bottom: var(--space-sm);">🔵</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">ECONNRESET/EPIPE</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">连接被重置，应该重试（但次数有限）</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 20px; margin-bottom: var(--space-sm);">⛔</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">UserAbort</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">用户主动中断，绝不应重试</div>
+            </div>
+          </div>
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>⚠️</span> 级联放大效应</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              过度重试在容量级联故障时会<strong>放大</strong>问题——每次重试都是 3-10× 的网关放大。
+              因此需要对不同场景（前台用户等待 vs 后台摘要生成）精细分类控制。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码深度走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+          <p class="content-p">五段核心代码，逐行拆解服务层的精妙设计。</p>
+        </div>
+
+        <!-- 3.1 重试策略 -->
+        <div id="code-retry" class="reveal">
+          <h3 class="content-h3">3.1 API 重试策略——精细的错误分类</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/api/withRetry.ts</code><br/>
+          <strong>设计意图</strong>：白名单控制"哪些场景的 529 允许重试"，避免雪崩。</p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🎯 策略模式</span>
+            <span class="pattern-badge">📋 白名单控制</span>
+            <span class="pattern-badge">💓 Keep-alive</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/services/api/withRetry.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="1,2,3,10,13,16,17"><code class="language-typescript">const DEFAULT_MAX_RETRIES = 10
+const MAX_529_RETRIES = 3
+export const BASE_DELAY_MS = 500
+
+// 前台查询来源集合：用户正在等待结果的场景 → 允许重试 529
+// 其他场景（摘要、标题、建议）→ 立即失败
+// 原因：在容量级联故障时，每次重试是 3-10× 网关放大
+const FOREGROUND_529_RETRY_SOURCES = new Set&lt;QuerySource&gt;([
+  'repl_main_thread',
+  'repl_main_thread:outputStyle:custom',
+  'sdk',
+  'agent:custom',
+  'agent:default',
+  'compact',
+  'auto_mode',
+  ...(feature('BASH_CLASSIFIER') ? (['bash_classifier'] as const) : []),
+])
+
+function shouldRetry529(querySource: QuerySource | undefined): boolean {
+  // undefined → 重试（保守策略，未标记的调用路径默认重试）
+  return querySource === undefined || FOREGROUND_529_RETRY_SOURCES.has(querySource)
+}
+
+// 持久重试模式（无人值守会话）
+const PERSISTENT_MAX_BACKOFF_MS = 5 * 60 * 1000   // 5 分钟上限
+const PERSISTENT_RESET_CAP_MS = 6 * 60 * 60 * 1000 // 6 小时后重置
+const HEARTBEAT_INTERVAL_MS = 30_000               // 30 秒 keep-alive</code></pre>
+          </div>
+
+          <div class="accordion open" data-group="code-anno-retry">
+            <div class="accordion-header" aria-expanded="true">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead>
+                    <tr><th>要点</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>FOREGROUND_529_RETRY_SOURCES</td><td>精确定义"用户正在等待"的场景集合，不在此集合中的后台任务不重试 529</td></tr>
+                    <tr><td>querySource === undefined → retry</td><td>保守策略，宁可多重试也不漏掉用户等待的场景</td></tr>
+                    <tr><td>PERSISTENT_MAX_BACKOFF_MS</td><td>持久重试模式下最多等 5 分钟，防止无限等待</td></tr>
+                    <tr><td>HEARTBEAT_INTERVAL_MS</td><td>每 30 秒发送 keep-alive，防止宿主环境将长时间等待会话标记为空闲并终止</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 分类重试策略</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>FOREGROUND_529_RETRY_SOURCES</code> 这个白名单把"哪些场景的用户在等待"编码成了代码，而不是口头约定。<code>querySource === undefined → retry</code> 的保守策略很妙——宁可多重试一次后台任务，也不漏掉用户正在等待的请求。持久重试模式的 <code>HEARTBEAT_INTERVAL_MS</code> 是对"宿主环境可能把长等待误杀"这个现实的承认，主动 keep-alive 比被动等待重连要便宜得多。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：所有 529 都重试，容量级联故障时 1000 个用户同时重试，每次重试 3-10× 放大，服务彻底雪崩。或者所有 529 都不重试，用户正在等待的对话因为一个偶发过载就直接报错，体验很差。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 InProcessTransport -->
+        <div id="code-inprocess" class="reveal">
+          <h3 class="content-h3">3.2 InProcessTransport——进程内 MCP 通信</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/mcp/InProcessTransport.ts</code><br/>
+          <strong>设计意图</strong>：避免子进程开销，在同进程内高效完成 MCP 通信，同时用 queueMicrotask 打破同步递归。</p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔗 双向链路模式</span>
+            <span class="pattern-badge">⚡ 微任务异步化</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/services/mcp/InProcessTransport.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="8,9,10"><code class="language-typescript">class InProcessTransport implements Transport {
+  private peer: InProcessTransport | undefined
+  private closed = false
+
+  onclose?: () => void
+  onerror?: (error: Error) => void
+  onmessage?: (message: JSONRPCMessage) => void
+
+  async send(message: JSONRPCMessage): Promise&lt;void&gt; {
+    if (this.closed) {
+      throw new Error('Transport is closed')
+    }
+    // 使用 queueMicrotask 异步投递，避免同步请求/响应循环中的堆栈溢出
+    queueMicrotask(() => {
+      this.peer?.onmessage?.(message)
+    })
+  }
+
+  async close(): Promise&lt;void&gt; {
+    if (this.closed) return
+    this.closed = true
+    this.onclose?.()
+    if (this.peer && !this.peer.closed) {
+      this.peer.closed = true
+      this.peer.onclose?.()
+    }
+  }
+}
+
+export function createLinkedTransportPair(): [Transport, Transport] {
+  const a = new InProcessTransport()
+  const b = new InProcessTransport()
+  a._setPeer(b)
+  b._setPeer(a)
+  return [a, b]
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 进程内传输 + queueMicrotask</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>createLinkedTransportPair</code> 把"两个互相通信的端点"这个概念封装得非常干净，调用方拿到两个端点，分别给 client 和 server 用，完全不需要关心消息怎么传递。<code>queueMicrotask</code> 是个反直觉但关键的细节——同步调用看起来更简单，但在 MCP 的 request-response 模式下会形成调用栈炸弹。用 microtask 把响应推迟一步，就像在两个紧贴着的齿轮之间加了一个微小的间隙，让它们能顺滑转动而不是卡死。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：直接 <code>this.peer?.onmessage?.(message)</code> 同步调用，A 调用 B，B 立刻响应 A，A 再调用 B……深度嵌套的工具调用会让调用栈 10 层变 100 层，最终 "Maximum call stack size exceeded"，而且这种 Bug 极难复现，因为只在特定调用深度下触发。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 LSP 状态机 -->
+        <div id="code-lsp" class="reveal">
+          <h3 class="content-h3">3.3 LSP 状态机——稳健的生命周期管理</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/lsp/LSPServerInstance.ts</code><br/>
+          <strong>设计意图</strong>：通过状态机保证 LSP 服务器的幂等启动、有限重启与分类重试。</p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔄 状态机模式</span>
+            <span class="pattern-badge">🛡️ 幂等启动</span>
+            <span class="pattern-badge">📊 崩溃计数</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · LSPServerInstance (状态机设计)</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="1,6,7,12,13"><code class="language-typescript">type LSPServerState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error'
+
+class LSPServerInstance {
+  private _state: LSPServerState = 'stopped'
+  private _crashCount = 0
+  private readonly _maxRestarts: number
+
+  async start(): Promise&lt;void&gt; {
+    if (this._state !== 'stopped' && this._state !== 'error') {
+      return  // 幂等：已在运行或启动中，直接返回
+    }
+    this._state = 'starting'
+    try {
+      await this._client.start()
+      await this._sendInitialize()
+      this._state = 'running'
+      this._crashCount = 0   // 成功后重置崩溃计数
+    } catch (error) {
+      this._state = 'error'
+      if (this._crashCount &lt; this._maxRestarts) {
+        this._crashCount++
+        await sleep(Math.pow(2, this._crashCount) * 1000) // 指数退避
+        return this.start()
+      }
+      throw error
+    }
+  }
+
+  async sendRequest&lt;T&gt;(method: string, params: unknown): Promise&lt;T&gt; {
+    for (let attempt = 0; attempt &lt; 3; attempt++) {
+      try {
+        return await this._client.sendRequest(method, params)
+      } catch (error) {
+        if (isContentModifiedError(error) && attempt &lt; 2) {
+          await sleep(Math.pow(2, attempt) * 100) // 内容已修改是瞬态错误
+          continue
+        }
+        throw error
+      }
+    }
+  }
+}</code></pre>
+          </div>
+
+          <div class="mermaid-container reveal">
+            <div class="mermaid">
+stateDiagram-v2
+  [*] --> stopped
+  stopped --> starting : start()
+  starting --> running : 初始化成功
+  starting --> error : 初始化失败/超时
+  running --> stopping : stop()
+  stopping --> stopped : 停止完成
+  running --> error : 崩溃/异常
+  error --> starting : 重启(未超限 maxRestarts)
+  error --> [*] : 超过 maxRestarts
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 状态机 + 幂等启动</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>if (this._state !== 'stopped' && this._state !== 'error') return</code> 这一行防止了双重启动——不管你调用多少次 <code>start()</code>，状态机保证只会执行一次真正的启动流程。<code>ContentModified</code> 的专项重试是对 LSP 协议的深刻理解：用户在打字，文件内容一直在变，这种"错误"其实是正常工作中的常态。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：没有幂等保护，两个地方同时触发 <code>start()</code>，两个 LSP 子进程启动，它们争抢同一个文件的监听权，诊断结果互相覆盖，调试起来你会以为自己在见鬼。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 OAuth PKCE -->
+        <div id="code-oauth" class="reveal">
+          <h3 class="content-h3">3.4 OAuth PKCE 授权码流程</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/mcp/auth.ts</code><br/>
+          <strong>设计意图</strong>：PKCE 防止授权码截获攻击，XAA 静默刷新避免交互式登录打断工作流。</p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔐 PKCE 安全</span>
+            <span class="pattern-badge">🔄 XAA 静默刷新</span>
+            <span class="pattern-badge">🗝️ 稳定枚举</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/services/mcp/auth.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,3,4,5,6,20,21"><code class="language-typescript">// 失败原因的稳定枚举（不改名，因为会上报到分析）
+type MCPRefreshFailureReason =
+  | 'metadata_discovery_failed'
+  | 'no_client_info'
+  | 'no_tokens_returned'
+  | 'invalid_grant'
+  | 'transient_retries_exhausted'
+  | 'request_failed'
+
+// 静默刷新流程（XAA - Cross-App Access）
+async function silentRefresh(serverUrl: string): Promise&lt;OAuthTokens | null&gt; {
+  const cachedIdToken = getCachedIdpIdToken()
+  if (!cachedIdToken) return null
+
+  try {
+    const newTokens = await performCrossAppAccess(serverUrl, cachedIdToken)
+    await saveTokens(serverUrl, newTokens)
+    return newTokens
+  } catch (error) {
+    clearIdpIdToken()  // 失败时必须清理：主动触发交互式登录的信号
+    logEvent('tengu_mcp_oauth_refresh_failure', {
+      reason: classifyError(error) as MCPRefreshFailureReason
+    })
+    return null
+  }
+}</code></pre>
+          </div>
+
+          <div class="mermaid-container reveal">
+            <div class="mermaid">
+sequenceDiagram
+participant User as "用户"
+participant Browser as "浏览器"
+participant CLI as "OAuth 客户端"
+participant AS as "授权服务器"
+participant API as "受保护 API"
+
+User->>CLI: 触发需要认证的操作
+CLI->>CLI: 生成 code_verifier + code_challenge(S256)
+CLI->>Browser: 打开授权 URL（含 code_challenge）
+Browser->>User: 显示授权页面
+User->>Browser: 同意授权
+Browser->>CLI: 回调到 localhost:{port}/callback（含 code）
+CLI->>AS: POST /token（code + code_verifier）
+AS->>AS: 验证 SHA256(code_verifier) == code_challenge
+AS-->>CLI: 返回 {access_token, refresh_token, id_token}
+CLI->>CLI: 持久化到安全存储（macOS: 钥匙串）
+CLI->>API: Bearer {access_token}
+API-->>CLI: 200 OK
+note over CLI,AS: 令牌过期后，静默刷新（XAA）
+CLI->>AS: 使用 id_token 换取新 access_token
+AS-->>CLI: 新 access_token
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — OAuth 静默刷新 + XAA</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>clearIdpIdToken()</code> 在失败时必须调用——这不是清理，而是"主动触发交互式登录"的信号。如果不清理，下次又尝试静默刷新，又失败，又不清理，用户永远陷在一个"看不见错误、什么也做不了"的死循环里。XAA 是一次 IdP 登录、所有 MCP 服务器都获得令牌，这对用户体验是巨大改善。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：静默刷新失败后不清 id_token 缓存，用户的每次操作都会触发一次超时的静默刷新尝试，30 秒后才失败，然后继续卡着……实际上你在给用户制造一个"软死机"体验。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 LSPDiagnosticRegistry -->
+        <div id="code-diagnostic" class="reveal">
+          <h3 class="content-h3">3.5 LSPDiagnosticRegistry——三层过滤漏斗</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/lsp/LSPDiagnosticRegistry.ts</code><br/>
+          <strong>设计意图</strong>：防止大型项目的海量诊断淹没 AI 上下文窗口，优先保留高严重性错误。</p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔍 LRU 去重</span>
+            <span class="pattern-badge">📉 每文件限流</span>
+            <span class="pattern-badge">🌊 全局限流</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · LSPDiagnosticRegistry</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,3,4,13,14,15"><code class="language-typescript">class LSPDiagnosticRegistry {
+  private readonly _perFileLimitMax = 10   // 每文件最多 10 条诊断
+  private readonly _totalLimitMax = 50     // 总量最多 50 条
+  private readonly _dedupeCache: LRUCache&lt;string, boolean&gt;  // 跨轮次 LRU 去重
+
+  registerPendingLSPDiagnostic(serverName: string, files: DiagnosticFile[]): void {
+    for (const file of files) {
+      const dedupedDiags = file.diagnostics
+        .filter(diag =&gt; {
+          const key = this._diagnosticKey(diag)
+          if (this._dedupeCache.has(key)) return false
+          this._dedupeCache.set(key, true)
+          return true
+        })
+        .sort((a, b) =&gt; (a.severity ?? 4) - (b.severity ?? 4)) // error优先
+        .slice(0, this._perFileLimitMax)
+
+      if (dedupedDiags.length &gt; 0) {
+        this._pending.push({ serverName, file: file.uri, diagnostics: dedupedDiags })
+      }
+    }
+  }
+
+  checkForLSPDiagnostics(): PendingDiagnostic[] {
+    const toDeliver = this._pending.slice(0, this._totalLimitMax)
+    this._pending = this._pending.slice(toDeliver.length)
+    return toDeliver
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 三层过滤漏斗</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：按严重性排序再截断（<code>sort</code> 后 <code>slice</code>）保证了"如果只能给你 10 条，给你最重要的 10 条"。LRU 跨轮次去重解决了一个真实问题：同一个拼写错误在用户改代码之前不会消失，如果每次文件变更都把它重新投递给 AI，AI 会一直看到同样的"噪声"，上下文窗口被占满。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：大型 Java 项目可能一次推 500 条警告，其中 490 条是 <code>deprecated API</code>，10 条是 null pointer 风险。没有限流，AI 的上下文窗口被废弃 API 警告占满，真正的 NPE 风险反而被挤出去了。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 驾驭工程视角</h3>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>🔬</span> 服务层的本质</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+              服务层的本质是"与不可靠的外部世界打交道的缓冲层"。<code>FOREGROUND_529_RETRY_SOURCES</code> 这个白名单是对"哪些失败用户能感知到"的精确建模，而不是一刀切地全部重试或全部不重试。<code>InProcessTransport</code> 则是另一种驾驭思路：能在进程内解决的问题，就不要跨进程——消灭了序列化、IPC、子进程管理的全部复杂性，代价只是多一对对象引用。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-top: var(--space-sm);">
+              LSP 的三层过滤漏斗（LRU去重 + 每文件限流 + 全局限流）和 OAuth 的 XAA 静默刷新是两个典型的"代理我处理复杂性"的设计：用户不需要知道 LSP 推了多少诊断，也不需要知道 MCP 令牌是怎么刷新的，服务层把这些细节都挡住了。
+            </p>
+          </div>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">重试策略必须区分场景</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">用户正在等待的请求和后台批处理任务对重试的容忍度完全不同。明确定义哪些错误在哪些场景下应该重试。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">进程内传输是优化机会</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">如果 Agent 框架有内置工具，用直接函数调用代替 JSON-RPC 序列化，工具调用延迟从毫秒级降到微秒级。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-purple);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">被动推送 + 限流是标准模式</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">不要轮询，而是订阅 + 限流。LSP 诊断、WebSocket 消息、事件流都适用这个模式。在消费侧做好去重和流量控制。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-orange);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">稳定性承诺写在代码里</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>MCPRefreshFailureReason</code> 的注释"keep them stable"是一种工程实践：把"这个值不能改"的约定写在距离代码最近的地方，而不是写在 Wiki 上等人遗忘。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <!-- Q1 -->
+          <div class="accordion" data-group="quiz17">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">题目 1：假设有 1000 个并发用户，服务器过载返回 529，如果所有用户的 SDK 都立即重试，会发生什么？Claude Code 的设计如何缓解这个问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <div class="callout callout-tip">
+                  <div class="callout-title"><span>💡</span> 参考答案</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                    1000 个用户立即重试，服务器收到 1000-3000 次新请求（每次重试的网关放大约 3-10×），过载程度不降反升，形成雪崩。Claude Code 通过两个机制缓解：一是<strong>区分场景</strong>——后台任务不重试 529，只有前台请求才重试，减少了 60-70% 的重试量；二是<strong>指数退避</strong>——不是立即重试，而是随机退避（BASE_DELAY_MS * 2^retry + jitter），把重试请求在时间上分散开，避免所有人同时重试。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Q2 -->
+          <div class="accordion" data-group="quiz17" style="margin-top: var(--space-md);">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">题目 2：<code>queueMicrotask</code> 将消息投递推迟到下一个微任务，这意味着什么？如果 MCP 服务器在同一个微任务队列中有多个待处理消息，执行顺序是确定的吗？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <div class="callout callout-tip">
+                  <div class="callout-title"><span>💡</span> 参考答案</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                    <code>queueMicrotask</code> 把回调加入微任务队列，当前同步代码执行完毕后，事件循环处理所有排队的微任务才继续下一个宏任务。执行顺序是<strong>确定的</strong>——微任务按 FIFO（先进先出）顺序处理，多个 <code>queueMicrotask</code> 调用会按队列顺序执行。这意味着如果 MCP 服务器一次 send 了 3 条消息，接收方会按顺序依次收到，消息不会乱序。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Q3 -->
+          <div class="accordion" data-group="quiz17" style="margin-top: var(--space-md);">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">题目 3：PKCE 防止了授权码被拦截后的令牌盗取，但它能防止什么？不能防止什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <div class="callout callout-tip">
+                  <div class="callout-title"><span>💡</span> 参考答案</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                    PKCE <strong>能防止</strong>：授权码在回调 URL 传输中被截获，攻击者拿到 code 也无法换取令牌，因为没有 <code>code_verifier</code>。PKCE <strong>不能防止</strong>：（1）恶意应用已经控制了整个进程；（2）社会工程学攻击（钓鱼页面）；（3）XSS 注入（授权服务器本身有 XSS）；（4）localhost 回调被其他进程监听——PKCE 只保护授权码到令牌的交换，不保护回调本身的安全性。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Q4 -->
+          <div class="accordion" data-group="quiz17" style="margin-top: var(--space-md);">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">题目 4：LSP 服务器在文件变更后异步推送诊断，Claude Code 对话系统是否总能在下次工具调用前收到诊断？如何保证诊断的时效性？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <div class="callout callout-tip">
+                  <div class="callout-title"><span>💡</span> 参考答案</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                    不能保证。LSP 服务器推送诊断的时机由其内部实现决定，Claude Code 只能被动等待。Claude Code 的策略是"尽力而为"而不是"强一致"——诊断的滞后顶多意味着这一轮对话看不到最新的诊断，下一轮会看到。要提高时效性，可以在工具调用前主动等待一小段时间（如 200ms）让诊断有机会到达，但这会增加每次工具调用的延迟，需要权衡。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Q5 -->
+          <div class="accordion" data-group="quiz17" style="margin-top: var(--space-md);">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">题目 5：<code>AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS</code> 类型名是否足以防止隐私泄露？有没有更强的技术保证？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <div class="callout callout-tip">
+                  <div class="callout-title"><span>💡</span> 参考答案</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                    类型名是文档级约束，只能在 Code Review 中提醒人注意，<strong>不能在运行时阻止</strong>错误的数据传入。更强的技术保证：（1）<strong>不透明类型</strong>——只有通过专门的 <code>sanitize()</code> 函数才能创建这个类型的值；（2）<strong>运行时验证</strong>——实际上调用 <code>stripProtoFields</code> 对字符串做扫描；（3）<strong>差分隐私</strong>——在上报前对字符串做哈希或截断，使得即使上报了也无法反推原始内容。Claude Code 结合了不透明类型（<code>never</code> 基础类型）和运行时过滤（<code>stripProtoFields</code>）。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-2xl);">
+          <h3 class="content-h3">进阶方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🔌 MCP 传输协议深入</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>HybridTransport.ts</code>，理解为什么使用 WebSocket 读取 + HTTP POST 写入的混合传输，以及串行批处理如何降低传输抖动。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🔐 OAuth XAA 深入</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>xaa.ts</code> 中的 RFC 8693 + jwt-bearer 令牌交换实现，理解如何从 IdP 令牌换取应用级令牌。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🔬 LSP 诊断追踪</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>diagnosticTracking.ts</code> 中如何记录基线诊断、比较编辑前后的差异，实现精确的"新增诊断"提取。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">📊 分析服务后端</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 Datadog 和内部事件日志导出器的实现差异，以及事件采样和字段脱敏的具体策略。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 核心要点回顾 -->
+        <div class="reveal" style="margin-top: var(--space-2xl);">
+          <div class="card" style="padding: var(--space-xl); border-top: 3px solid var(--accent-green);">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-lg);">✅ 本课核心要点</h3>
+            <div style="display: flex; flex-direction: column; gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>529 分类重试</strong>：FOREGROUND_529_RETRY_SOURCES 白名单精确控制哪些场景允许重试，防止雪崩</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>InProcessTransport</strong>：queueMicrotask 打破同步递归，createLinkedTransportPair 封装双向通信</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>LSP 状态机</strong>：幂等启动 + ContentModified 专项重试 + 崩溃计数限制无限重启</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>OAuth XAA</strong>：失败时必须 clearIdpIdToken，否则用户陷入"软死机"；一次登录所有 MCP 服务器共享令牌</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>诊断三层过滤</strong>：LRU 去重 + 每文件限流 + 全局限流，按严重性截断保留最重要诊断</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 课程导航页脚 -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="16.html" class="nav-prev">← 上一课：插件与扩展系统</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="18.html" class="nav-next">下一课：IDE 桥接与部署运维 →</a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<!-- 页脚 -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="16.html">← 上一课</a>
+        <a href="18.html">下一课 →</a>
+      </nav>
+      <p class="footer-copy">
+        第17课 · 服务层集成 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+# 隐藏目录
+.*
+!.gitignore
+
+# PPT 历史文件
+pptx/
+
+# OS 文件
+.DS_Store
+Thumbs.db
+
+# 编辑器
+*.swp
+*~

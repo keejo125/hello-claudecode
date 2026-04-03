@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第07课：文件操作工具全解 | Claude Code 教程</title>
+  <meta name="description" content="全面解析 FileReadTool、FileEditTool、FileWriteTool、GrepTool、GlobTool 的设计原理，掌握读写状态机、乐观锁、引号规范化等核心机制。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; max-width: 1400px; margin: 0 auto; padding: 0; align-items: start; }
+    .lesson-toc { position: sticky; top: 76px; height: calc(100vh - 76px); overflow-y: auto; padding: var(--space-xl) var(--space-lg); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-cyan); margin-bottom: var(--space-md); }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a { display: block; padding: 6px 10px; font-size: 13px; color: var(--text-secondary); border-radius: var(--radius-sm); border-left: 2px solid transparent; transition: all var(--transition-fast); line-height: 1.4; }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-md); }
+    .code-anno-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .code-anno-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.6; }
+    .code-anno-table td:first-child { font-family: var(--font-code); font-size: 12px; color: var(--accent-orange); white-space: nowrap; min-width: 80px; }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-blue">第二阶段 · 核心子系统深度剖析</span>
+      <span class="sep">/</span>
+      <span>第07课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📁</span>
+      <span>LESSON 07 · PHASE 02</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      文件操作工具<br/>
+      <span class="gradient-text">全解</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-blue">第二阶段 · 核心子系统深度剖析</span>
+      <span class="tag tag-orange">⏱ 建议 120 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐ 中级</span>
+      <span class="tag tag-green">FileRead · FileEdit · FileWrite · Grep · Glob</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item"><span class="goal-num">01</span><span>掌握 <strong>FileReadTool</strong> 的多格式处理、令牌限制与去重缓存机制</span></div>
+      <div class="goal-item"><span class="goal-num">02</span><span>理解 <strong>FileEditTool</strong> 的 diff-based 编辑模型与时间戳冲突检测策略</span></div>
+      <div class="goal-item"><span class="goal-num">03</span><span>学会 <strong>FileWriteTool</strong> 的原子写入流程与 LSP/VSCode 通知机制</span></div>
+      <div class="goal-item"><span class="goal-num">04</span><span>掌握 <strong>GrepTool</strong> 基于 ripgrep 的三种输出模式与分页设计</span></div>
+      <div class="goal-item"><span class="goal-num">05</span><span>理解 <strong>GlobTool</strong> 的文件名模式匹配、排序与结果限制设计</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-five-tools">1.1 五工具职责边界</a></div>
+        <div class="toc-item sub"><a href="#concept-read-before-write">1.2 读前写强制约束</a></div>
+        <div class="toc-item sub"><a href="#concept-token-budget">1.3 令牌预算 vs 字节预算</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 整体架构图</a></div>
+        <div class="toc-item sub"><a href="#arch-sideeffects">2.2 文件变更副作用链</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码走查</a></div>
+        <div class="toc-item sub"><a href="#code-file-read">3.1 FileReadTool 设备黑名单+令牌</a></div>
+        <div class="toc-item sub"><a href="#code-dedup">3.2 去重缓存机制</a></div>
+        <div class="toc-item sub"><a href="#code-file-edit">3.3 FileEditTool 七步写入</a></div>
+        <div class="toc-item sub"><a href="#code-quote-norm">3.4 引号规范化三步法</a></div>
+        <div class="toc-item sub"><a href="#code-grep">3.5 GrepTool 三模式+分页</a></div>
+        <div class="toc-item sub"><a href="#code-glob">3.6 GlobTool 截断信号</a></div>
+        <div class="toc-item"><a href="#design-highlights">§4 代码设计亮点</a></div>
+        <div class="toc-item"><a href="#harness">§5 Harness Engineering</a></div>
+        <div class="toc-item"><a href="#quiz">§6 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-five-tools" class="reveal">
+          <h3 class="content-h3">1.1 五种工具的职责边界</h3>
+          <div class="callout callout-info" style="margin-bottom: var(--space-lg);">
+            <div class="callout-title"><span>📋</span> 文件操作工具组</div>
+            <div style="font-family: var(--font-code); font-size: 13px; color: var(--text-secondary); line-height: 2; margin-top: var(--space-sm);">
+              <div>FileReadTool &nbsp;&nbsp; 读取文件内容（文本/图像/PDF/Notebook）</div>
+              <div>FileEditTool &nbsp;&nbsp; 精确替换：用 new_string 替换 old_string</div>
+              <div>FileWriteTool &nbsp; 全量覆盖：用新内容完整替换旧文件</div>
+              <div>GrepTool &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 内容搜索：ripgrep 驱动，正则匹配</div>
+              <div>GlobTool &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 文件名搜索：glob 模式匹配文件路径</div>
+            </div>
+          </div>
+
+          <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">关键区别：编辑 vs 写入</h4>
+          <table class="compare-table">
+            <thead><tr><th>维度</th><th>FileEditTool</th><th>FileWriteTool</th></tr></thead>
+            <tbody>
+              <tr><td><strong>操作粒度</strong></td><td>字符串级替换（old→new）</td><td>文件级全量覆盖</td></tr>
+              <tr><td><strong>必须先读</strong></td><td>是（已读+未被改动）</td><td>是（已读+未被改动）</td></tr>
+              <tr><td><strong>适用场景</strong></td><td>修改文件局部代码</td><td>创建新文件或重写整个文件</td></tr>
+              <tr><td><strong>diff 输出</strong></td><td>结构化补丁</td><td>结构化补丁（create 时为空）</td></tr>
+              <tr><td><strong>maxResultSizeChars</strong></td><td>100,000</td><td>100,000</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="concept-read-before-write" class="reveal">
+          <h3 class="content-h3">1.2 "读前写"强制约束</h3>
+          <p class="content-p">FileEditTool 和 FileWriteTool 都实现了<strong>读-写状态机</strong>：</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">伪代码 · 读-写状态机</span>
+            </div>
+            <pre><code class="language-text">FileReadTool.call()
+  → readFileState.set(path, { content, timestamp, offset, limit })
+
+FileEditTool.validateInput()
+  → readFileState.get(path)   // 不存在 → 拒绝
+  → mtime > timestamp         // 文件被改动 → 拒绝
+  → old_string 不在文件中     // 字符串不存在 → 拒绝</code></pre>
+          </div>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 乐观锁模式</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">这是<strong>乐观锁</strong>模式：轻量级冲突检测，无需文件锁。在"读多改少"的文件编辑场景中，冲突率低，性能接近无锁。</p>
+          </div>
+        </div>
+
+        <div id="concept-token-budget" class="reveal">
+          <h3 class="content-h3">1.3 令牌预算 vs 字节预算</h3>
+          <p class="content-p">FileReadTool 有两层独立限制：</p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">💾</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">maxSizeBytes</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">控制磁盘 I/O，防止读取超大文件进内存</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🔢</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">maxTokens</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">控制 Claude 上下文消耗，防止单次读取耗尽 context window</div>
+            </div>
+          </div>
+          <p class="content-p">两层限制相互独立：一个文件可以体积小但高令牌密度（如 base64 encoded 数据），也可以体积大但令牌密度低。</p>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 整体架构图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "文件操作工具组"
+        FR[FileReadTool 多格式读取]
+        FE[FileEditTool 精确替换]
+        FW[FileWriteTool 全量写入]
+        GT[GrepTool 内容搜索]
+        GL[GlobTool 路径匹配]
+    end
+
+    subgraph "共享基础设施"
+        RS[readFileState 读写状态Map]
+        PF[权限检查 filesystem.ts]
+        FS[fs抽象层 fsOperations.ts]
+        EP[expandPath 路径规范化]
+    end
+
+    subgraph "文件变更通知链"
+        LSP[LSP Server 语言服务器]
+        VS[VSCode Extension diff视图]
+        FH[fileHistory 文件历史]
+    end
+
+    subgraph "外部搜索引擎"
+        RG[ripgrep 内容搜索]
+        GB[glob 路径匹配]
+    end
+
+    FR --> RS
+    FE --> RS
+    FW --> RS
+    FE --> LSP
+    FW --> LSP
+    FE --> VS
+    FW --> VS
+    FE --> FH
+    FW --> FH
+    GT --> RG
+    GL --> GB
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-sideeffects" class="reveal">
+          <h3 class="content-h3">2.2 文件变更后的副作用链</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant Tool as FileEditTool/FileWriteTool
+    participant Cache as readFileState
+    participant LSP as LSP Server
+    participant VS as VSCode
+    participant FH as FileHistory
+
+    Tool->>FH: fileHistoryTrackEdit（备份原文件）
+    Tool->>FS: writeTextContent（写磁盘）
+    Tool->>LSP: changeFile + saveFile（触发诊断）
+    Tool->>VS: notifyVscodeFileUpdated（触发 diff 视图）
+    Tool->>Cache: readFileState.set（更新时间戳）
+    Tool-->>Model: 返回结构化 patch
+            </div>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 为什么先备份再写？</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              <code>fileHistoryTrackEdit</code> 在写入前调用，是幂等的（基于内容哈希），即使后续写入因冲突失败，也只是浪费了一次备份，不会产生脏状态。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 FileReadTool -->
+        <div id="code-file-read" class="reveal">
+          <h3 class="content-h3">3.1 FileReadTool：设备文件黑名单 + 令牌限制</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🚫 路径黑名单</span>
+            <span class="pattern-badge">⚡ 两阶段令牌检测</span>
+            <span class="pattern-badge">🛡️ 无 I/O 拦截</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/FileReadTool/FileReadTool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// ① 设备文件黑名单 — 路径级检查，无 I/O，安全且高效
+const BLOCKED_DEVICE_PATHS = new Set([
+  '/dev/zero', '/dev/random', '/dev/urandom', '/dev/full',
+  '/dev/stdin', '/dev/tty', '/dev/console',
+  '/dev/stdout', '/dev/stderr',
+  '/dev/fd/0', '/dev/fd/1', '/dev/fd/2',
+])
+
+// ② Linux /proc 路径检查 — 覆盖 /proc/self/fd/0-2 等 PID 别名
+function isBlockedDevicePath(filePath: string): boolean {
+  if (BLOCKED_DEVICE_PATHS.has(filePath)) return true
+  if (
+    filePath.startsWith('/proc/') &amp;&amp;
+    (filePath.endsWith('/fd/0') ||
+      filePath.endsWith('/fd/1') ||
+      filePath.endsWith('/fd/2'))
+  ) return true
+  return false
+}
+
+// ③ 令牌验证：双阶段检测
+async function validateContentTokens(content: string, ext: string, maxTokens?: number) {
+  const effectiveMaxTokens = maxTokens ?? getDefaultFileReadingLimits().maxTokens
+
+  // 快速路径：基于文件扩展名的粗估算
+  const tokenEstimate = roughTokenCountEstimationForFileType(content, ext)
+  if (!tokenEstimate || tokenEstimate &lt;= effectiveMaxTokens / 4) return  // 4倍安全裕量
+
+  // 慢速路径：调用 API 精确计数（有网络开销）
+  const tokenCount = await countTokensWithAPI(content)
+  const effectiveCount = tokenCount ?? tokenEstimate
+
+  if (effectiveCount &gt; effectiveMaxTokens) {
+    throw new MaxFileReadTokenExceededError(effectiveCount, effectiveMaxTokens)
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 设备文件黑名单的无 I/O 设计</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>BLOCKED_DEVICE_PATHS</code> 是一个静态 Set，检查在 <code>validateInput</code>（权限申请之前）就完成，不需要打开文件或调用 stat。就像保安在门口看身份证，而不是等客人进了包厢再查——早拦截，代价最小，且不会触发 Windows SMB 认证等副作用。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果用 <code>fs.open()</code> 检测设备文件，打开 <code>/dev/zero</code> 就会挂起进程（它会持续输出零字节，永远不到 EOF）。事后检测不但无法阻止危险，还会让工具本身陷入无法响应的状态。
+            </p>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 令牌计数的两阶段优化</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：先用粗估算（基于文件类型的字节/token 比例）做"快速豁免"，只有当估算值超过 maxTokens/4 时才调 API 精确计数。4倍安全裕量意味着：大多数普通文件在估算阶段就能放行，性能消耗极低。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果每个文件都调用 token 计数 API，FileReadTool 的每次调用都会额外触发一个 API 请求（网络往返约 100-500ms），极大降低文件读取速度，尤其在批量读取场景下体验极差。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 去重缓存 -->
+        <div id="code-dedup" class="reveal">
+          <h3 class="content-h3">3.2 FileReadTool：去重缓存（dedup）机制</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · FileReadTool · 去重缓存</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 去重逻辑：在 call() 方法最开始执行
+const existingState = dedupKillswitch
+  ? undefined
+  : readFileState.get(fullFilePath)
+
+if (
+  existingState &amp;&amp;
+  !existingState.isPartialView &amp;&amp;          // 不是分段读
+  existingState.offset !== undefined       // 是 Read 工具写入的条目（非 Edit/Write 条目）
+) {
+  const rangeMatch =
+    existingState.offset === offset &amp;&amp; existingState.limit === limit
+
+  if (rangeMatch) {
+    const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
+    if (mtimeMs === existingState.timestamp) {
+      // 文件未变：返回 file_unchanged 存根，避免重传相同内容
+      return {
+        data: {
+          type: 'file_unchanged' as const,
+          file: { filePath: file_path },
+        },
+      }
+    }
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — readFileState 的双重角色</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>readFileState</code> 一个 Map 同时服务两个功能：FileReadTool 用它做"去重缓存"（避免重复传输未变化的文件内容）；FileEditTool/FileWriteTool 用它做"乐观锁检测"（检查文件是否在读后被其他进程改动）。两个功能共用同一份状态，逻辑一致，没有状态同步问题，代码量也减半了。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果分别维护"去重缓存 Map"和"写冲突检测 Map"，两个 Map 的 mtime 字段可能在并发场景下产生不一致，导致诡异的 bug，而且代码量翻倍。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 FileEditTool 七步写入 -->
+        <div id="code-file-edit" class="reveal">
+          <h3 class="content-h3">3.3 FileEditTool：七步写入流程</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔒 同步临界区</span>
+            <span class="pattern-badge">🏦 乐观锁检测</span>
+            <span class="pattern-badge">📋 七步原子操作</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/FileEditTool/FileEditTool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">async call(input: FileEditInput, { readFileState, ... }) {
+  // ─── 步骤 1：准备阶段（可 yield，在临界区外）─────────────────
+  await fs.mkdir(dirname(absoluteFilePath))          // 确保父目录存在
+  await fileHistoryTrackEdit(...)                    // 备份原文件（幂等）
+
+  // ─── 步骤 2：同步读取 + 冲突检测（临界区开始）────────────────
+  // 注意：readFileForEdit 用 readFileSync（同步），避免临界区内 yield
+  const { content: originalFileContents } = readFileForEdit(absoluteFilePath)
+
+  if (fileExists) {
+    const lastWriteTime = getFileModificationTime(absoluteFilePath)
+    const lastRead = readFileState.get(absoluteFilePath)
+    if (!lastRead || lastWriteTime &gt; lastRead.timestamp) {
+      // Windows 特殊处理：云同步/防病毒可能触碰 mtime 但不改内容
+      const isFullRead = lastRead?.offset === undefined &amp;&amp; lastRead?.limit === undefined
+      const contentUnchanged = isFullRead &amp;&amp; originalFileContents === lastRead.content
+      if (!contentUnchanged) {
+        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)  // 文件被改动，中止
+      }
+    }
+  }
+
+  // ─── 步骤 3：引号规范化 ──────────────────────────────────────
+  const actualOldString = findActualString(originalFileContents, old_string) || old_string
+  const actualNewString = preserveQuoteStyle(old_string, actualOldString, new_string)
+
+  // ─── 步骤 4：生成结构化 patch ────────────────────────────────
+  const { patch, updatedFile } = getPatchForEdit({ ... })
+
+  // ─── 步骤 5：写磁盘 ──────────────────────────────────────────
+  writeTextContent(absoluteFilePath, updatedFile, encoding, endings)  // 同步写
+
+  // ─── 步骤 6：通知外部服务 ────────────────────────────────────
+  lspManager?.changeFile(absoluteFilePath, updatedFile)               // 异步，不阻塞
+  notifyVscodeFileUpdated(absoluteFilePath, originalFileContents, updatedFile)
+
+  // ─── 步骤 7：更新缓存 + 返回结果 ────────────────────────────
+  readFileState.set(absoluteFilePath, {
+    content: updatedFile,
+    timestamp: getFileModificationTime(absoluteFilePath),
+    offset: undefined,       // 标记为 Write 条目（区分 Read 条目）
+    limit: undefined,
+  })
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 同步临界区保证原子性</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：从读取 mtime 到写入磁盘，全程没有 <code>await</code>，Node.js 事件循环不会切换到其他任务。就像银行转账——从账户扣款和向对方账户入账必须是原子操作，中间不能有其他事务插入。同步 I/O 在性能上虽有损耗，但买来了"冲突检测窗口绝对没有并发插入"的保证。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果冲突检测后有一个 <code>await</code>，在等待期间另一个 FileEditTool 调用可能修改了同一文件，导致两个调用都通过了冲突检测，最后一个写入的"赢"了，但用户看到的是数据竞争导致的文件损坏。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 引号规范化 -->
+        <div id="code-quote-norm" class="reveal">
+          <h3 class="content-h3">3.4 FileEditTool：引号规范化三步法</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/FileEditTool/utils.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// ─── 第一步：尝试精确匹配 ────────────────────────────────────
+export function findActualString(fileContent: string, searchString: string): string | null {
+  if (fileContent.includes(searchString)) {
+    return searchString  // 精确命中，直接返回
+  }
+
+  // ─── 第二步：规范化双方引号后再匹配 ─────────────────────────
+  const normalizedSearch = normalizeQuotes(searchString)  // 弯引号→直引号
+  const normalizedFile   = normalizeQuotes(fileContent)
+
+  const searchIndex = normalizedFile.indexOf(normalizedSearch)
+  if (searchIndex !== -1) {
+    // 返回文件中的原始字符串（保留弯引号）
+    return fileContent.substring(searchIndex, searchIndex + searchString.length)
+  }
+  return null  // 完全找不到
+}
+
+// ─── 第三步：向 new_string 传播同款引号风格 ─────────────────
+export function preserveQuoteStyle(
+  oldString: string,        // 模型给的（直引号）
+  actualOldString: string,  // 文件里的（可能是弯引号）
+  newString: string,        // 模型给的 new_string（直引号）
+): string {
+  if (oldString === actualOldString) return newString
+
+  const hasDoubleQuotes = actualOldString.includes('\u201C') || actualOldString.includes('\u201D')
+  const hasSingleQuotes = actualOldString.includes('\u2018') || actualOldString.includes('\u2019')
+
+  let result = newString
+  if (hasDoubleQuotes) result = result.replaceAll('"', '\u201C').replaceAll('"', '\u201D')
+  if (hasSingleQuotes) result = result.replaceAll("'", '\u2018').replaceAll("'", '\u2019')
+  return result
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 引号规范化的现实主义</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：Claude 生成的文本只有直引号（键盘上的 <code>"</code>），但用户文件可能含有 macOS 自动更正生成的弯引号（<code>\u201C\u201D</code>）。三步法先匹配再同步引号风格，让模型的"直引号搜索"能命中"弯引号文件"，同时新内容的引号风格与原文保持一致，用户看不出修改的痕迹。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：一个在 Word 里写的文档被 FileEditTool 编辑后，直引号和弯引号混用，排版风格错乱——对技术文档无所谓，但对 Word 文档、博客文章、用户界面文案这类要求排版一致的场景，这个小细节会造成明显的视觉破坏。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 GrepTool -->
+        <div id="code-grep" class="reveal">
+          <h3 class="content-h3">3.5 GrepTool：三种输出模式 + 分页设计</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📊 三模式输出</span>
+            <span class="pattern-badge">📑 分页信号</span>
+            <span class="pattern-badge">⏰ mtime 排序</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/GrepTool/GrepTool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 默认结果上限：250 行
+const DEFAULT_HEAD_LIMIT = 250
+
+// 分页辅助函数：slice + truncation detection
+function applyHeadLimit&lt;T&gt;(items: T[], limit: number | undefined, offset: number = 0) {
+  if (limit === 0) {
+    // 显式传 0 = 无限制逃生阀门
+    return { items: items.slice(offset), appliedLimit: undefined }
+  }
+
+  const effectiveLimit = limit ?? DEFAULT_HEAD_LIMIT
+  const sliced = items.slice(offset, offset + effectiveLimit)
+
+  // 只在真正截断时才上报 appliedLimit
+  // 模型通过 appliedLimit !== undefined 判断"还有更多结果，可用 offset 翻页"
+  const wasTruncated = items.length - offset &gt; effectiveLimit
+  return { items: sliced, appliedLimit: wasTruncated ? effectiveLimit : undefined }
+}
+
+// 三种输出模式的 ripgrep 参数映射
+if (output_mode === 'files_with_matches') {
+  args.push('-l')               // rg -l：只输出包含匹配的文件名
+} else if (output_mode === 'count') {
+  args.push('-c')               // rg -c：输出 filename:count 格式
+}
+// content 模式（默认，支持上下文控制）
+if (output_mode === 'content' &amp;&amp; context !== undefined) {
+  args.push('-C', context.toString())
+}
+
+// files_with_matches 模式：按 mtime 降序排序（最近修改的排前面）
+const sortedMatches = results
+  .map((_, i) =&gt; [_, stats[i]!] as const)
+  .sort((a, b) =&gt; b[1].mtimeMs - a[1].mtimeMs)
+  .map(_ =&gt; _[0])</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 分页信号与结果相对化</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>appliedLimit</code> 的设计很精妙——只在"真正被截断"时才返回非 undefined 值，让模型能区分"250个结果就是全部"和"250个结果是截断上限"。模型根据这个信号决定是否用 offset 翻页。同时，路径相对化节省了每条结果都重复公共前缀的 token 浪费。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果总是返回 appliedLimit（即使没有截断），模型会误以为每次搜索都被截断，不断翻页直到拿到"完整结果"，产生大量无意义的 API 调用。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 GlobTool -->
+        <div id="code-glob" class="reveal">
+          <h3 class="content-h3">3.6 GlobTool：结果截断 + 修改时间排序</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/GlobTool/GlobTool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export const GlobTool = buildTool({
+  name: GLOB_TOOL_NAME,
+  maxResultSizeChars: 100_000,    // 比 GrepTool(20K) 大 5 倍——路径列表更紧凑
+  isConcurrencySafe() { return true },  // 只读，安全并发
+  isReadOnly() { return true },
+
+  async call(input, { abortController, getAppState, globLimits }) {
+    const limit = globLimits?.maxResults ?? 100  // 上限 100 个文件
+
+    const { files, truncated } = await glob(
+      input.pattern, GlobTool.getPath(input),
+      { limit, offset: 0 },
+      abortController.signal,
+      appState.toolPermissionContext,
+    )
+
+    const filenames = files.map(toRelativePath)  // 相对路径节省 token
+    return { data: { filenames, durationMs: Date.now() - start, numFiles: filenames.length, truncated } }
+  },
+
+  // 截断时附加提示信息
+  mapToolResultToToolResultBlockParam(output, toolUseID) {
+    return {
+      tool_use_id: toolUseID,
+      type: 'tool_result',
+      content: [
+        ...output.filenames,
+        ...(output.truncated
+          ? ['(Results are truncated. Consider using a more specific path or pattern.)']
+          : []),
+      ].join('\n'),
+    }
+  },
+})</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — truncated 信号与 durationMs 的实用主义</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>truncated</code> 字段是模型的"知情同意"机制——模型知道结果可能不完整，可以用更精确的 pattern 或 path 重新搜索，而不是基于截断的结果做出错误判断。<code>durationMs</code> 字段则是性能监控的埋点，让驾驭层可以追踪 glob 操作的性能表现。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果静默截断而不告知模型，模型可能认为目录只有这 100 个文件，在"完整"列表上做出错误决策（如"项目里没有测试文件"）。明确告知截断让模型能主动调整搜索策略。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 代码设计亮点 -->
+      <section class="content-section" id="design-highlights">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">代码设计亮点</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">macOS 截图路径自愈机制</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · FileReadTool · 路径自愈</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// macOS 不同版本在截图文件名的 AM/PM 前使用不同的空格字符：
+// 旧版：常规空格 U+0020
+// 新版：窄不换行空格 U+202F（NARROW NO-BREAK SPACE）
+const THIN_SPACE = String.fromCharCode(8239)  // U+202F
+
+function getAlternateScreenshotPath(filePath: string): string | undefined {
+  const filename = path.basename(filePath)
+  const amPmPattern = /^(.+)([ \u202F])(AM|PM)(\.png)$/
+  const match = filename.match(amPmPattern)
+  if (!match) return undefined
+
+  const currentSpace = match[2]
+  const alternateSpace = currentSpace === ' ' ? THIN_SPACE : ' '
+  return filePath.replace(
+    `${currentSpace}${match[3]}${match[4]}`,
+    `${alternateSpace}${match[3]}${match[4]}`,
+  )
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — macOS 截图路径的自愈设计</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：macOS 系统更新后，截图文件名中时间部分的空格字符从普通空格（U+0020）变成了窄不换行空格（U+202F），但旧截图名字还是普通空格。<code>getAlternateScreenshotPath</code> 在找不到文件时自动尝试"备用空格版本"，用户完全感知不到这个差异。这是一个典型的"代码替用户踩坑"的防御性设计。
+            </p>
+          </div>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">图像令牌预算的三层降级压缩</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · FileReadTool · 图像三层降级</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export async function readImageWithTokenBudget(filePath, maxTokens) {
+  // 第一层：标准 resize（sharp 自动选择最优尺寸）
+  const resized = await maybeResizeAndDownsampleImageBuffer(buffer, size, format)
+
+  const estimatedTokens = Math.ceil(result.file.base64.length * 0.125)
+  if (estimatedTokens &gt; maxTokens) {
+    try {
+      // 第二层：激进压缩（专用压缩函数，从同一 buffer 出发，不重读文件）
+      const compressed = await compressImageBufferWithTokenLimit(buffer, maxTokens, mediaType)
+      return { ...compressed }
+    } catch {
+      // 第三层：终极降级（400×400, JPEG quality 20，必然成功）
+      const fallbackBuffer = await sharp(buffer)
+        .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 20 })
+        .toBuffer()
+    }
+  }
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 三层降级的失败安全保证</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：第三层（400×400, JPEG quality 20）是"绝对不失败"的保底层：分辨率极低，质量极差，但总能产出一个合法的图像。整条链从同一份 Buffer 出发，磁盘只读一次，后续全是内存操作。
+            </p>
+          </div>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">GrepTool 的 VCS 目录自动排除</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · GrepTool · VCS 排除</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">const VCS_DIRECTORIES_TO_EXCLUDE = [
+  '.git', '.svn', '.hg', '.bzr', '.jj', '.sl'  // .jj=Jujutsu, .sl=Sapling（新生代 VCS）
+] as const
+
+// 对每个 VCS 目录注入 --glob !&lt;dir&gt; 参数
+for (const dir of VCS_DIRECTORIES_TO_EXCLUDE) {
+  args.push('--glob', `!${dir}`)
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — VCS 目录排除的生态感知</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>.jj</code>（Jujutsu）和 <code>.sl</code>（Sapling）是 2020 年代才出现的新版本控制系统，但 Claude Code 在工具级别就已经包含了它们。这种对工具生态多样性的关注，体现了产品的用心程度。
+            </p>
+          </div>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">FileWriteTool 的行尾处理设计变更</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · FileWriteTool · 行尾策略</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// Write 是完整内容替换 — 模型在 content 中明确指定了行尾，应该被尊重
+// 以前的行为：保留旧文件的行尾，或从 repo 采样
+// 问题：在 Linux 上覆盖 CRLF 文件，或当 cwd 中存在 CRLF 二进制文件时，
+//       会静默损坏脚本
+writeTextContent(fullFilePath, content, enc, 'LF')  // 强制 LF</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 行尾策略的简化决策</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：与其试图"智能推断"行尾（从仓库采样、保留旧文件行尾），不如明确说"Write 就是 LF，不讨价还价"。这个决策消除了一个隐藏的 bug 来源：WSL 环境下覆盖 CRLF 文件会静默产生混合行尾的 Shell 脚本，脚本运行时报莫名其妙的错误。简单、明确、可预测，胜过复杂、智能、有时出错。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div class="reveal">
+          <p class="content-p">
+            文件操作工具组是驾驭层中"最接近文件系统"的模块，它的设计集中体现了驾驭层如何<strong>在保留完整能力的前提下，精确控制风险边界</strong>。
+          </p>
+
+          <div class="code-block" style="margin-bottom: var(--space-lg);">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · 读写状态机作为能力授权追踪</span>
+            </div>
+            <pre><code class="language-typescript">// 驾驭层约束：写操作前必须有读取记录
+const lastRead = readFileState.get(absoluteFilePath)
+if (!lastRead) {
+  throw new Error(FILE_NOT_READ_ERROR)  // 拒绝"不知情"的修改
+}
+if (lastWriteTime &gt; lastRead.timestamp) {
+  throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)  // 拒绝"过期知情"的修改
+}</code></pre>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📖</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 1：用"读后才能写"的状态机控制 AI 的文件操作</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">不要允许 AI 在没有先读取文件的情况下修改它。"先读取、记录快照、写时验证快照未过期"是一个非常实用的文件操作安全模式，适合任何需要 AI 修改用户数据的场景。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔓</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 2：乐观锁比文件锁更适合 AI 工具</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">在 AI 编排多工具并发场景中，悲观锁（持锁阻塞）会严重影响并发性。乐观锁（读后验证）在"读多改少"的文件编辑场景中既轻量又安全。只需在写入时检查 mtime 是否变化，冲突率低的场景下性能接近无锁。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📢</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 3：工具结果中明确传递截断信号</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">当工具结果被截断时，必须在结果中明确告知模型（如 <code>truncated: true</code> 或 <code>appliedLimit</code>），让模型能做出正确的后续决策（如翻页搜索或调整策略）。静默截断会让模型基于不完整信息做出错误判断。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-purple);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔧</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 4：模型的输出能力边界需要工具来弥补</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Claude 无法生成弯引号，但用户文件可能包含弯引号——这类"模型能力边界"需要工具层的规范化来弥补。在构建 AI 应用时，识别模型的输出能力边界，并在工具层做适当的容错处理，可以大幅提升用户体验的一致性。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §6 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 06</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：FileReadTool 的 maxResultSizeChars: Infinity 意味着什么？为什么其他写入工具设置为 100_000？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>maxResultSizeChars</code> 控制工具结果是否需要"落盘"（写入临时文件，告知模型文件路径）。FileReadTool 设为 Infinity 是因为：如果它的输出被落盘，模型下一步会用 FileReadTool 去读那个落盘文件，输出再次超限，再次落盘，陷入无限循环。FileReadTool 自身通过令牌限制（maxTokens）控制大小，不需要外部落盘机制。FileEditTool/FileWriteTool 设为 100K 是因为它们的结果（diff 补丁）可以落盘，模型只需知道修改成功，不会递归读取落盘的 diff。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：为什么 FileEditTool 在 call() 阶段用同步 readFileForEdit()，而 validateInput 用异步方法？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>call()</code> 包含一个"临界区"：从读取文件内容到写入磁盘，这段代码不能有 <code>await</code>（否则 Node.js 事件循环可能切换到另一个并发调用，破坏原子性）。同步的 <code>readFileForEdit()</code> 保证了临界区内不会 yield。<code>validateInput</code> 在临界区外，只是做格式校验和权限预检，可以用 async 方法提升性能，不会引入竞态问题。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：GrepTool 在 files_with_matches 模式下为什么按 mtime 降序排序（最近修改的排前面）？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：这是一个基于使用场景的 UX 决策：在编码工作流中，开发者最近修改的文件通常是当前任务最相关的文件。把这些文件排在结果前面，Claude 能更快找到正确的目标文件，减少无关文件的干扰。这个排序策略隐含了对"用户通常在做什么"的理解——对编码助手的日常使用，mtime 是更好的相关性代理指标。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：CYBER_RISK_MITIGATION_REMINDER 常量的用途是什么？为什么某些模型版本被豁免？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>CYBER_RISK_MITIGATION_REMINDER</code> 是在每次文件读取结果前注入的安全提醒，防止模型被诱导去分析恶意代码并提供"改进建议"（如：优化一段看起来无害的脚本，实际上在帮助完善恶意软件）。豁免列表说明特定版本的模型（如 claude-opus-4-6）可能内置了更强的安全对齐，不需要在工具层重复注入这段提醒——重复提醒反而消耗 token 并可能影响模型的正常输出。这体现了驾驭层的安全机制会随模型能力的提升而动态调整。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 扩展新格式</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">仿照 <code>ipynb</code> 的处理路径，添加对 DOCX、CSV 等格式的原生支持，不依赖 Bash 转换</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 流式行读取</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>src/utils/readFileInRange.ts</code> 的 AbortController 流式行读取实现</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🖼️</span> 图像缩放策略</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>src/utils/imageResizer.ts</code> 中 <code>compressImageBufferWithTokenLimit</code> 的尺寸决策算法</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>⚡</span> ripgrep 集成</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>src/utils/ripgrep.ts</code> 如何处理 WSL 性能惩罚（3-5x 速度差异）与超时机制</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">附录：五工具快速对比表</h3>
+          <table class="arch-table">
+            <thead>
+              <tr><th>维度</th><th>FileReadTool</th><th>FileEditTool</th><th>FileWriteTool</th><th>GrepTool</th><th>GlobTool</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>操作类型</td><td>只读</td><td>读写</td><td>读写</td><td>只读</td><td>只读</td></tr>
+              <tr><td>并发安全</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+              <tr><td>必须先读</td><td>—</td><td>✅</td><td>✅（已存在文件）</td><td>—</td><td>—</td></tr>
+              <tr><td>maxResultSize</td><td>∞</td><td>100K</td><td>100K</td><td>20K</td><td>100K</td></tr>
+              <tr><td>外部依赖</td><td>sharp/poppler</td><td>diff</td><td>diff</td><td>ripgrep</td><td>glob</td></tr>
+              <tr><td>触发 LSP 通知</td><td>—</td><td>✅</td><td>✅</td><td>—</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>读写状态机</strong>：readFileState 双重角色——去重缓存 + 乐观锁检测</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>同步临界区</strong>：FileEditTool 的七步写入全程无 await，保证原子性</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>引号规范化</strong>：三步法桥接模型能力边界与用户文件现实</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>截断信号</strong>：GrepTool/GlobTool 明确告知模型结果是否完整</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="06.html" class="nav-prev">← 上一课：Shell 执行工具深度剖析</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="08.html" class="nav-next">下一课：代理与编排系统 →</a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="06.html">← 上一课</a>
+        <a href="08.html">下一课 →</a>
+      </nav>
+      <p class="footer-copy">第07课 · 文件操作工具全解 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

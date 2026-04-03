@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第16课：插件系统架构与开发 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 插件系统的声明式清单设计、信任边界分层、LoadedPlugin 统一契约与 MCP/LSP 协议集成架构。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+    .plugin-type-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-md);
+      margin: var(--space-lg) 0;
+    }
+    @media (max-width: 768px) { .plugin-type-grid { grid-template-columns: 1fr; } }
+    .plugin-type-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+    }
+    .plugin-type-card.builtin { border-top: 3px solid var(--accent-green); }
+    .plugin-type-card.marketplace { border-top: 3px solid var(--accent-blue); }
+    .plugin-type-card.session { border-top: 3px solid var(--accent-orange); }
+    .plugin-type-label {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: var(--space-sm);
+    }
+    .plugin-type-card.builtin .plugin-type-label { color: var(--accent-green); }
+    .plugin-type-card.marketplace .plugin-type-label { color: var(--accent-blue); }
+    .plugin-type-card.session .plugin-type-label { color: var(--accent-orange); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-16">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-16" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+    <a href="15.html">← 第15课</a>
+    <a href="17.html">第17课 →</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第六阶段 · 高级功能与系统集成</span>
+      <span class="sep">/</span>
+      <span>第16课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🔌</span>
+      <span>LESSON 16 · PHASE 06</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      插件系统<br/>
+      <span class="gradient-text">架构与开发</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第六阶段 · 高级功能</span>
+      <span class="tag tag-orange">⏱ 建议 4-5 小时</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐ 高级</span>
+      <span class="tag tag-green">声明式清单 · 信任边界 · MCP/LSP · 类型安全</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解插件类型系统：掌握 <code>BuiltinPluginDefinition</code>、<code>LoadedPlugin</code>、<code>PluginError</code> 等核心类型的设计意图</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握插件加载生命周期：从来源发现、缓存验证、组件装载到运行时激活的完整流程</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>理解内置插件与市场插件的信任边界：<code>builtin</code> vs <code>marketplace</code> 在安全模型上的本质差异</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>学会插件沙箱隔离设计：路径校验、环境变量展开、高风险字段禁止等安全策略</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>掌握 MCP/LSP 协议集成：插件如何声明并激活外部服务器，作用域前缀避免命名冲突</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-types">1.1 插件类型体系</a></div>
+        <div class="toc-item sub"><a href="#concept-components">1.2 插件组件类型</a></div>
+        <div class="toc-item sub"><a href="#concept-declarative">1.3 声明式架构</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 整体架构图</a></div>
+        <div class="toc-item sub"><a href="#arch-why">2.2 为什么这样设计</a></div>
+        <div class="toc-item sub"><a href="#arch-lifecycle">2.3 插件加载生命周期</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-builtin">3.1 内置插件注册表</a></div>
+        <div class="toc-item sub"><a href="#code-loaded">3.2 LoadedPlugin 统一契约</a></div>
+        <div class="toc-item sub"><a href="#code-error">3.3 判别式联合错误类型</a></div>
+        <div class="toc-item sub"><a href="#code-skill">3.4 Skill → Command 转换</a></div>
+        <div class="toc-item sub"><a href="#code-capacity">3.5 CapacityWake 信号合并</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-types" class="reveal">
+          <h3 class="content-h3">1.1 插件类型体系</h3>
+          <p class="content-p">
+            Claude Code 的插件分为三类，这三类有截然不同的信任级别和管理方式：
+          </p>
+          <div class="plugin-type-grid">
+            <div class="plugin-type-card builtin">
+              <div class="plugin-type-label">最高信任</div>
+              <div style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">内置插件</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                标识：<code>{name}@builtin</code><br/>
+                来源：<code>src/plugins/builtinPlugins.ts</code><br/>
+                <em>随 CLI 分发，无需网络</em>
+              </div>
+            </div>
+            <div class="plugin-type-card marketplace">
+              <div class="plugin-type-label">中等信任</div>
+              <div style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">市场插件</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                标识：<code>{name}@{marketplace}</code><br/>
+                来源：市场 Git 仓库<br/>
+                <em>需来源校验、清单验证</em>
+              </div>
+            </div>
+            <div class="plugin-type-card session">
+              <div class="plugin-type-label">最低信任</div>
+              <div style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">会话级插件</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                标识：内联路径<br/>
+                来源：本地文件系统<br/>
+                <em>本地开发用，安全要求最严</em>
+              </div>
+            </div>
+          </div>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>💡</span> 关键区分</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <code>builtin</code> 后缀是硬编码在源码中的标识符，不经过网络，绝对可信；而市场插件需要经过来源校验、清单验证、环境变量展开等一系列安全检查。
+            </p>
+          </div>
+        </div>
+
+        <div id="concept-components" class="reveal">
+          <h3 class="content-h3">1.2 插件组件类型</h3>
+          <p class="content-p">每个插件可以声明多种组件：</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">插件组件目录结构</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-text">commands/    → 对话命令（/slash 命令）
+skills/      → 技能目录（Markdown 文件）
+agents/      → 自定义代理（系统提示 + 工具组合）
+hooks/       → 生命周期钩子（工具调用前后）
+mcp/         → MCP 服务器配置
+lsp/         → LSP 服务器配置</code></pre>
+          </div>
+        </div>
+
+        <div id="concept-declarative" class="reveal">
+          <h3 class="content-h3">1.3 声明式架构与运行时装配</h3>
+          <p class="content-p">
+            插件系统的核心设计思想：<strong>声明式清单 + 运行时装配</strong>。
+          </p>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>✅</span> 解耦的好处</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              插件本身只声明"我能提供什么"（清单驱动），而运行时加载器负责将这些声明转化为真实可用的能力（命令、工具、钩子等）。这种解耦使得插件本身无需了解 Claude Code 内部实现，只需遵循清单规范。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 整体架构图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+subgraph "声明层"
+  M["plugin.json 清单"]
+  CMD_DIR["commands/ 目录"]
+  AGT_DIR["agents/ 目录"]
+  SKL_DIR["skills/ 目录"]
+  HK_CFG["hooks.json"]
+  MCP_CFG[".mcp.json"]
+  LSP_CFG[".lsp.json"]
+end
+
+subgraph "类型与验证层"
+  TYPES["plugin.ts 类型定义"]
+  SCHEMAS["schemas.ts Zod 验证"]
+end
+
+subgraph "加载层"
+  LOADER["pluginLoader.ts 核心加载器"]
+  ID["pluginIdentifier.ts 标识解析"]
+  DIR["pluginDirectories.ts 路径管理"]
+  MKT["marketplaceManager.ts 市场管理"]
+  BUILTIN["builtinPlugins.ts 内置注册"]
+end
+
+subgraph "组件装载层"
+  CMD_L["loadPluginCommands.ts"]
+  AGT_L["loadPluginAgents.ts"]
+  HK_L["loadPluginHooks.ts"]
+  MCP_I["mcpPluginIntegration.ts"]
+  LSP_I["lspPluginIntegration.ts"]
+end
+
+subgraph "生命周期管理"
+  HOOK["useManagePlugins.ts"]
+  UI["plugin.tsx 管理界面"]
+end
+
+M --> LOADER
+TYPES --> LOADER
+SCHEMAS --> LOADER
+BUILTIN --> HOOK
+LOADER --> CMD_L
+LOADER --> AGT_L
+LOADER --> HK_L
+LOADER --> MCP_I
+LOADER --> LSP_I
+HOOK --> LOADER
+UI --> HOOK
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-why" class="reveal">
+          <h3 class="content-h3">2.2 为什么这样设计？</h3>
+          <table class="compare-table">
+            <thead><tr><th>设计决策</th><th>原因</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>分层职责分离</strong></td>
+                <td>每一层只做一件事：声明层不涉及运行时逻辑、加载层只负责发现/校验/缓存、装载层只负责映射为核心对象、生命周期层只负责协调整体状态。出问题时定位非常准确。</td>
+              </tr>
+              <tr>
+                <td><strong>LoadedPlugin 作为统一契约</strong></td>
+                <td>无论是内置插件还是市场插件，最终都被统一表示为 <code>LoadedPlugin</code>，后续的装载层完全不需要关心插件来源，写一套代码处理所有插件。</td>
+              </tr>
+              <tr>
+                <td><strong>错误不应阻断其他插件</strong></td>
+                <td>每个插件加载失败只影响自身，错误被收集到 <code>errors[]</code> 数组，其他插件正常加载。体现了<strong>容错优先</strong>的设计原则。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="arch-lifecycle" class="reveal">
+          <h3 class="content-h3">2.3 插件加载生命周期</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+participant UI as "/plugin 界面"
+participant Hook as "useManagePlugins"
+participant Loader as "pluginLoader"
+participant Cmd as "loadPluginCommands"
+participant MCP as "mcpPluginIntegration"
+
+UI->>Hook: 初始化或 /reload-plugins
+Hook->>Loader: loadAllPlugins(含内置)
+Loader-->>Hook: {enabled[], disabled[], errors[]}
+par 并行装载
+  Hook->>Cmd: getPluginCommands(enabled)
+  Hook->>MCP: loadPluginMcpServers(enabled)
+end
+Hook-->>UI: 更新 AppState.plugins
+UI-->>UI: 渲染插件列表与错误统计
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 内置插件注册表 -->
+        <div id="code-builtin" class="reveal">
+          <h3 class="content-h3">3.1 内置插件注册表设计</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/plugins/builtinPlugins.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📋 注册表模式</span>
+            <span class="pattern-badge">🔢 哨兵值</span>
+            <span class="pattern-badge">🔒 三层优先级</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/plugins/builtinPlugins.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,13,16,17,18"><code class="language-typescript">// 模块级私有注册表，外部只能通过 registerBuiltinPlugin 注册
+const BUILTIN_PLUGINS: Map&lt;string, BuiltinPluginDefinition&gt; = new Map()
+
+export const BUILTIN_MARKETPLACE_NAME = 'builtin'
+
+export function getBuiltinPlugins(): { enabled: LoadedPlugin[]; disabled: LoadedPlugin[] } {
+  const settings = getSettings_DEPRECATED()
+  const enabled: LoadedPlugin[] = []
+  const disabled: LoadedPlugin[] = []
+
+  for (const [name, definition] of BUILTIN_PLUGINS) {
+    if (definition.isAvailable && !definition.isAvailable()) {
+      continue  // 运行时可用性检查，完全跳过不出现在 UI 中
+    }
+
+    const pluginId = `${name}@${BUILTIN_MARKETPLACE_NAME}`
+    const userSetting = settings?.enabledPlugins?.[pluginId]
+    // 三层优先级：用户偏好 > 插件默认值 > true
+    const isEnabled = userSetting !== undefined
+      ? userSetting === true          // 类型安全：=== true 不误判 undefined
+      : (definition.defaultEnabled ?? true)
+
+    const plugin: LoadedPlugin = {
+      name,
+      manifest: { name, description: definition.description, version: definition.version },
+      path: BUILTIN_MARKETPLACE_NAME,  // 哨兵值，无文件系统路径
+      source: pluginId,
+      repository: pluginId,
+      enabled: isEnabled,
+      isBuiltin: true,                 // 影响 UI 展示和信任逻辑
+      hooksConfig: definition.hooks,
+      mcpServers: definition.mcpServers,
+    }
+
+    isEnabled ? enabled.push(plugin) : disabled.push(plugin)
+  }
+
+  return { enabled, disabled }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 注册表 + 哨兵值</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>BUILTIN_PLUGINS</code> 是模块级私有 Map，外部只能通过 <code>registerBuiltinPlugin</code> 注册，不能直接操作注册表。<code>path: 'builtin'</code> 用一个特殊字符串代替 null，让下游代码能用 <code>===</code> 做快速判断，避免了处处写 <code>if (plugin.path !== null)</code> 的繁琐。三层优先级用一行表达式清晰呈现，类型安全。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：直接暴露 Map 给外部操作，某段代码在错误时机覆盖了内置插件定义，排查时你找不到谁改了；path 用 null 时，下游每处都要处理空值，<code>loadPluginAgents.ts</code> 里会多出一堆 <code>?.</code> 链，可读性急剧下降。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 LoadedPlugin 统一契约 -->
+        <div id="code-loaded" class="reveal">
+          <h3 class="content-h3">3.2 LoadedPlugin 类型——统一契约</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/types/plugin.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · LoadedPlugin 类型定义</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="7,8,10,11"><code class="language-typescript">export type LoadedPlugin = {
+  name: string
+  manifest: PluginManifest         // 清单元数据
+  path: string                     // 文件系统路径（内置插件为哨兵值）
+  source: string                   // 来源标识，如 "myplugin@official"
+  repository: string               // 仓库标识符
+  enabled?: boolean
+  isBuiltin?: boolean              // true 表示随 CLI 分发的内置插件
+
+  // 支持单数和复数两种路径格式（向后兼容）
+  commandsPath?: string
+  commandsPaths?: string[]         // 新格式：多个命令目录
+  commandsMetadata?: Record&lt;string, CommandMetadata&gt;
+  agentsPath?: string
+  agentsPaths?: string[]
+  skillsPath?: string
+  skillsPaths?: string[]
+
+  hooksConfig?: HooksSettings
+  mcpServers?: Record&lt;string, McpServerConfig&gt;
+  lspServers?: Record&lt;string, LspServerConfig&gt;
+  settings?: Record&lt;string, unknown&gt;  // 插件自定义配置，unknown 确保类型安全
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 统一契约类型</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>LoadedPlugin</code> 是整个插件系统的"通行证"，无论内置还是市场插件，都被统一转换为这个类型。装载层（<code>loadPluginCommands.ts</code> 等）完全不需要关心插件来源，写一套代码处理所有插件。单数路径 + 复数路径并存，是一种"老格式也能用"的向后兼容设计，就像 USB-A 接口虽然旧，但你不会因为买了新电脑就强迫所有旧设备报废。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：装载层要判断 <code>if (plugin.isBuiltin) { ... } else { ... }</code> 到处做分支，随着插件类型增加，代码会越来越难维护，每新加一种来源就要改所有装载层文件。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 判别式联合错误类型 -->
+        <div id="code-error" class="reveal">
+          <h3 class="content-h3">3.3 判别式联合错误类型（Discriminated Union）</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/types/plugin.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🏷️ 判别式联合</span>
+            <span class="pattern-badge">🔍 穷举检查</span>
+            <span class="pattern-badge">🛡️ 编译期安全</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · PluginError 判别式联合</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="10,15,22,26"><code class="language-typescript">export type PluginError =
+  | {
+      type: 'path-not-found'
+      source: string
+      plugin?: string
+      path: string
+      component: PluginComponent  // 'commands' | 'agents' | 'skills' | 'hooks'
+    }
+  | {
+      type: 'git-auth-failed'
+      source: string
+      plugin?: string
+      gitUrl: string
+      authType: 'ssh' | 'https'
+    }
+  | {
+      type: 'network-error'
+      source: string
+      plugin?: string
+      url: string
+      httpStatus?: number
+    }
+  | {
+      type: 'manifest-validation-error'
+      source: string
+      plugin?: string
+      field: string
+      issue: string
+    }
+
+// 类型安全的错误处理
+switch (error.type) {
+  case 'git-auth-failed':
+    // TypeScript 知道这里有 error.gitUrl 和 error.authType
+    showGitAuthHelp(error.authType, error.gitUrl)
+    break
+  case 'manifest-validation-error':
+    // TypeScript 知道这里有 error.field 和 error.issue
+    showValidationError(error.field, error.issue)
+    break
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 判别式联合错误类型</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：每种错误类型携带不同的字段（<code>git-auth-failed</code> 有 <code>gitUrl</code>，<code>manifest-validation-error</code> 有 <code>field</code> 和 <code>issue</code>），TypeScript 在 switch 分支里自动收窄类型，写代码时就知道哪些字段可用。这比用 <code>error.message.includes('git auth')</code> 做字符串匹配要安全得多，不会因为一个换行符或大小写差异就匹配失败。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：用字符串错误消息的代码，某个下游系统检查 <code>error.message.includes('auth')</code> 来决定是否弹出重新认证对话框，某天错误文本改了措辞，弹框消失了，用户只能看到一个莫名其妙的报错，根本不知道需要重新登录。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 Skill → Command 转换 -->
+        <div id="code-skill" class="reveal">
+          <h3 class="content-h3">3.4 内置插件中 skill → Command 的转换</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/plugins/builtinPlugins.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · skillDefinitionToCommand</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="9,10"><code class="language-typescript">function skillDefinitionToCommand(definition: BundledSkillDefinition): Command {
+  return {
+    type: 'prompt',
+    name: definition.name,
+    description: definition.description,
+    allowedTools: definition.allowedTools ?? [],
+
+    // 注意这里的来源标记：用 'bundled' 而不是 'builtin'
+    // 'builtin' 在 Command.source 中专指 /help, /clear 这样的硬编码命令
+    // 'bundled' 保留技能在 Skill 工具列表中的位置、分析日志和提示截断豁免
+    // 用户可切换性通过 LoadedPlugin.isBuiltin 来追踪
+    source: 'bundled',
+    loadedFrom: 'bundled',
+
+    hooks: definition.hooks,
+    context: definition.context,
+    agent: definition.agent,
+    isEnabled: definition.isEnabled ?? (() =&gt; true),
+    isHidden: !(definition.userInvocable ?? true),
+    progressMessage: 'running',
+    getPromptForCommand: definition.getPromptForCommand,
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 命名即契约</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：一个词 <code>'builtin'</code> 在整个代码库里只有一个含义：硬编码的 slash 命令（/help、/clear）。内置插件的技能另起名字叫 <code>'bundled'</code>，保证了含义不混淆。这就像公司里"总监"和"VP"是两个不同的职级，你不能因为觉得差不多就混用——下游系统（分析统计、工具列表过滤）依赖这个命名做精确判断。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：误用 <code>'builtin'</code> 导致内置插件技能被提示截断逻辑豁免，或被分析系统统计到错误的桶里，Bug 极难复现——因为只有同时满足多个条件时才触发，代码审查几乎不可能发现。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 CapacityWake 信号合并 -->
+        <div id="code-capacity" class="reveal">
+          <h3 class="content-h3">3.5 CapacityWake——双信号合并原语</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/bridge/capacityWake.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔀 信号合并模式</span>
+            <span class="pattern-badge">🏭 工厂函数</span>
+            <span class="pattern-badge">🧹 内存无泄漏</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/bridge/capacityWake.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="5,6,12,20,24"><code class="language-typescript">export function createCapacityWake(outerSignal: AbortSignal): CapacityWake {
+  let wakeController = new AbortController()
+
+  function wake(): void {
+    wakeController.abort()          // 触发现有的唤醒信号
+    wakeController = new AbortController()  // 重新创建，供下次使用
+  }
+
+  function signal(): CapacitySignal {
+    const merged = new AbortController()
+    const abort = (): void =&gt; merged.abort()
+
+    // 如果任一信号已经 abort，立即返回已 abort 的信号
+    if (outerSignal.aborted || wakeController.signal.aborted) {
+      merged.abort()
+      return { signal: merged.signal, cleanup: () =&gt; {} }
+    }
+
+    // 监听两个信号，任一触发则合并的信号也触发
+    outerSignal.addEventListener('abort', abort, { once: true })
+    const capSig = wakeController.signal
+    capSig.addEventListener('abort', abort, { once: true })
+
+    return {
+      signal: merged.signal,
+      cleanup: () =&gt; {
+        // 正常退出时清理监听器，避免内存泄漏
+        outerSignal.removeEventListener('abort', abort)
+        capSig.removeEventListener('abort', abort)
+      },
+    }
+  }
+
+  return { signal, wake }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 信号合并原语</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>wake()</code> 里 abort + 立即新建 AbortController 是原子操作——下一次等待拿到的是全新的控制器，不存在竞态窗口。<code>{ once: true }</code> 让监听器自动销毁，<code>cleanup</code> 在未触发时主动清理，两道防线确保监听器不会无限积累。这个原语把复杂的并发协调问题封装成了两个简单的方法：等就 <code>signal()</code>，醒就 <code>wake()</code>。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：两处等待逻辑各自实现，某天一处漏了清理监听器，Node.js 报 "MaxListenersExceededWarning"，你要查半天才能找到是哪个 AbortController 没清。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 Harness Engineering 视角</h3>
+          <p class="content-p">
+            插件系统最核心的工程思路是：<strong>信任是有边界的，边界要编码在类型里</strong>。<code>isBuiltin: boolean</code> 这个字段不只是个标志位，它是整个权限模型的锚点——装载层看到这个字段就知道该不该检查高危字段，UI 看到它就知道该不该显示"来源不可信"警告。<code>LoadedPlugin</code> 作为统一契约是另一个驾驭思路：无论插件从哪来，最终都被压缩成同一个形态，后续所有代码只需要和这一个类型打交道，扩展新的插件来源不需要改动任何装载层。
+          </p>
+          <div class="callout callout-info reveal">
+            <div class="callout-title"><span>🔗</span> FlushGate 和 CapacityWake：把并发复杂性封装成简单接口</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              用的人不需要知道 AbortController 怎么合并、splice(0) 为什么比重赋值更安全，只需要 <code>signal()/wake()</code>。这是 Harness Engineering 的精髓——<strong>把复杂性关在正确的层次里，不让它泄露给使用者</strong>。
+            </p>
+          </div>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔌</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 1：插件架构让 Agent 能力可插拔</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Claude Code 的 MCP/LSP 插件是给 AI 添加工具的标准方式。你的 AI 应用如果需要让用户自定义能力，可以参考"声明式清单 + 运行时装配"的设计，而不是把所有工具硬编码在主进程里。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🛡️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 2：容错优先于完整性</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">插件加载失败只影响自身，其他插件正常运行。这个原则用在 AI 工具集上同样成立——某个 MCP 工具启动失败不应该导致整个 Agent 启动失败，错误收集到 <code>errors[]</code> 里，用户看到警告但还能继续工作。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔐</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 3：信任分级是必须的</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">内置能力（随代码分发）、已验证插件（来源可信）、用户本地插件（开发调试用）天然有不同的风险级别，不要把它们混为一谈。给 AI 添加工具时也要思考：这个工具能访问什么？能执行什么命令？权限最小化是基本原则。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-cyan);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⚡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 4：并行装载是默认选择</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>Promise.all</code> 并行加载所有插件组件，总时间等于最慢那个而不是所有之和。AI 应用中初始化多个工具、加载多个配置时，能并行的就别串行。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：为什么内置插件可以声明 <code>mcpServers</code>，而市场插件只能通过 <code>.mcp.json</code> 声明，且用户需要手动配置凭证？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：内置插件随 CLI 一起分发，经过 Anthropic 自己的代码审查，相当于"出厂预装的软件"，信任级别等同于 CLI 本身。而市场插件来自第三方 Git 仓库，Anthropic 无法对每个插件的 <code>mcpServers</code> 配置做安全审查——一个恶意插件可以声明一个自己控制的 MCP 服务器，拦截所有工具调用并窃取上下文数据。要求用户手动配置凭证是故意设置的摩擦力：让用户在给第三方插件网络访问权限前必须主动操作一次，强迫用户意识到这是个权限提升操作。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：<code>Promise.all</code> 并行加载所有插件组件，但如果某个 MCP 服务器启动很慢，会阻塞整个初始化流程吗？应该如何优化？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：会的，<code>Promise.all</code> 等待最慢的那个才返回。但 Claude Code 的设计选择了"简单正确"而不是"最快速"——初始化时的一次性等待是可接受的，比引入复杂的并发控制更易于维护。如果要优化，可以用 <code>Promise.allSettled</code> 替代 <code>Promise.all</code>（任何一个失败不影响其他），并对每个 MCP 服务器的启动加超时（<code>Promise.race([start(), timeout()])</code>），超时的服务器标记为 error 而不是阻塞整体。还可以把 MCP 服务器的启动设计为"懒加载"——首次工具调用时才真正连接，初始化时只验证配置格式是否合法。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3（进阶）：如果插件 A 依赖插件 B，而插件 B 又依赖插件 A（循环依赖），系统如何检测和处理？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：DFS（深度优先搜索）在访问节点时维护一个"当前路径"栈，如果在 DFS 过程中发现要访问的节点已经在当前路径上，就说明存在循环依赖。<code>dependencyResolver.ts</code> 检测到循环时会把涉及的所有插件标记为错误（<code>circular-dependency</code> 类型），而不是尝试"部分加载"——因为循环依赖的插件集合根本无法确定初始化顺序。跨市场的依赖（如插件 A 来自市场1，依赖来自市场2的插件 B）也会被直接拒绝，防止供应链攻击。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4（架构）：<code>path: 'builtin'</code> 用哨兵字符串代替 null，与使用 <code>type: 'builtin' | 'filesystem'</code> 的判别联合相比，哪种更好？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：哨兵字符串的优点：简单，对现有代码改动最小，<code>path.startsWith('/')</code> 之类的检查天然排除哨兵值。缺点：<code>path</code> 字段语义变了（它不再总是文件路径），让人困惑；如果未来要处理哨兵值时需要处处写 <code>if (path === 'builtin')</code>，散落各处。判别联合的优点：类型系统强制穷举，TypeScript 会警告你漏处理的分支；语义清晰，<code>type</code> 字段就是来源标识。实际上两者都可行，但对于新设计，判别联合更符合 TypeScript 最佳实践；哨兵值在需要向后兼容（已有大量 <code>plugin.path</code> 使用）时是合理的折衷。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 实现一个内置插件</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">参考 <code>builtinPlugins.ts</code> 中的注册机制，创建一个能检测当前系统 Git 状态并提供相关命令的内置插件</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 深入 marketplaceManager.ts</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究市场的 Git 克隆、版本化缓存、种子缓存的完整实现，理解为什么使用三层缓存策略</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 研究 dependencyResolver.ts</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">理解插件间依赖的 DFS 解析、循环检测和跨市场依赖阻断的实现</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔌</span> MCP 沙箱深入</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>mcpPluginIntegration.ts</code> 中变量替换的实现，特别是 <code>${CLAUDE_PLUGIN_DATA}</code> 如何确保每个插件有独立的数据目录</p>
+            </div>
+          </div>
+
+          <!-- 小结 -->
+          <div class="card reveal" style="margin-top: var(--space-xl); padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">
+              📌 本课小结
+            </h3>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>信任分级</strong>：builtin &gt; marketplace &gt; session，信任边界编码在类型里</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>统一契约</strong>：LoadedPlugin 让装载层完全不关心插件来源</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>容错优先</strong>：单个插件失败不影响整体，错误收集到 errors[]</span>
+              </div>
+              <div style="display: flex; gap: var(--font-size-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>命名即契约</strong>：builtin vs bundled，一词一义，不混淆下游判断</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 课程导航页脚 -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="15.html" class="nav-prev">← 第15课：内存管理与诊断</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="17.html" class="nav-next">下一课 →</a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="15.html">← 第15课</a>
+        <a href="17.html">第17课 →</a>
+      </nav>
+      <p class="footer-copy">第16课 · 插件系统架构与开发 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

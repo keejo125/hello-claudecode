@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Code 源码学习系列 | 深入分析 AI 编码助手架构</title>
+  <meta name="description" content="系统深入学习 Claude Code 的架构设计与工程实践，涵盖 25 节课程、7 大阶段，从全局视角到 Harness Engineering 综合实践。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="vendor/highlight.min.js" defer></script>
+  <script src="vendor/mermaid.min.js" defer></script>
+</head>
+<body>
+
+<!-- 顶部进度条 -->
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     导航栏
+═══════════════════════════════════════════════════════════ -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="#overview">课程概览</a></li>
+      <li><a href="#phases">学习阶段</a></li>
+      <li><a href="#paths">学习路径</a></li>
+      <li><a href="#tech-stack">技术栈</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+
+  <!-- 移动端菜单 -->
+  <nav class="nav-mobile" id="nav-mobile" aria-label="移动端导航">
+    <a href="#overview">课程概览</a>
+    <a href="#phases">学习阶段</a>
+    <a href="#paths">学习路径</a>
+    <a href="#tech-stack">技术栈</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Hero 区域
+═══════════════════════════════════════════════════════════ -->
+<section class="hero" id="hero" aria-label="课程介绍">
+  <!-- 背景装饰 -->
+  <div class="hero-bg" aria-hidden="true">
+    <div class="hero-grid"></div>
+    <div class="hero-glow-1"></div>
+    <div class="hero-glow-2"></div>
+  </div>
+
+  <div class="container">
+    <div class="hero-content">
+      <!-- 徽标 -->
+      <div class="hero-eyebrow">
+        <span>📚</span>
+        <span>源码解析系列</span>
+      </div>
+
+      <!-- 主标题 -->
+      <h1 class="hero-title">
+        Claude Code<br />
+        <span class="gradient-text">源码学习系列</span>
+      </h1>
+
+      <!-- 副标题 -->
+      <p class="hero-subtitle">
+        深入分析 AI 编码助手的架构设计与工程实践
+      </p>
+
+      <!-- 描述 -->
+      <p class="hero-desc">
+        系统拆解 Claude Code 的每一层设计——从启动引导、权限系统，到智能查询引擎、状态管理，
+        再到插件生态与 IDE 集成，以及 Harness Engineering 高级实践。25 节结构化课程，带你真正读懂生产级 AI 工具的代码。
+      </p>
+
+      <!-- CTA 按钮 -->
+      <div class="hero-actions">
+        <a href="#phases" class="btn btn-primary">
+          <span>🚀</span>
+          <span>开始学习</span>
+        </a>
+        <a href="lessons/01.html" class="btn btn-outline">
+          <span>📖</span>
+          <span>第一课：全景架构解析</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     统计数字区域
+═══════════════════════════════════════════════════════════ -->
+<section class="stats-section" id="overview" aria-label="课程统计">
+  <div class="container">
+
+    <div class="text-center mb-xl reveal">
+      <p class="section-label">课程概览</p>
+      <h2 class="section-title">全面系统的源码教学</h2>
+      <div class="section-divider" style="margin: var(--space-lg) auto;"></div>
+    </div>
+
+    <div class="stats-grid">
+
+      <div class="stat-card reveal delay-100">
+        <div class="stat-icon" aria-hidden="true">📘</div>
+        <div class="stat-number" data-count="25" data-suffix="" data-duration="1200">0</div>
+        <div class="stat-label">节系统课程</div>
+      </div>
+
+      <div class="stat-card reveal delay-200">
+        <div class="stat-icon" aria-hidden="true">🎯</div>
+        <div class="stat-number" data-count="7" data-suffix="" data-duration="800">0</div>
+        <div class="stat-label">大学习阶段</div>
+      </div>
+
+      <div class="stat-card reveal delay-300">
+        <div class="stat-icon" aria-hidden="true">📄</div>
+        <div class="stat-number" data-count="62" data-suffix="" data-duration="1500">0</div>
+        <div class="stat-label">份参考文档</div>
+      </div>
+
+      <div class="stat-card reveal delay-400">
+        <div class="stat-icon" aria-hidden="true">⏱️</div>
+        <div class="stat-number" data-count="25" data-suffix="+" data-duration="1000">0</div>
+        <div class="stat-label">小时学习时长</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     六大阶段导航
+═══════════════════════════════════════════════════════════ -->
+<section class="phases-section" id="phases" aria-label="课程阶段">
+  <div class="container">
+
+    <div class="text-center mb-xl reveal">
+      <p class="section-label">学习阶段</p>
+      <h2 class="section-title">七大阶段，循序渐进</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        从宏观架构到微观实现，从核心引擎到生态扩展，再到 Harness Engineering 综合实践，
+        每个阶段聚焦一个维度，帮你构建完整的知识体系。
+      </p>
+      <div class="section-divider" style="margin: var(--space-lg) auto;"></div>
+    </div>
+
+    <div class="phases-grid">
+
+      <!-- 阶段一 -->
+      <article class="phase-card reveal delay-100">
+        <div class="phase-number">Phase 01</div>
+        <span class="phase-icon" aria-hidden="true">🌐</span>
+        <h3 class="phase-title">全局视角</h3>
+        <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-lg);">
+          建立对 Claude Code 整体架构的认知，理解设计哲学与启动流程。
+        </p>
+        <nav class="phase-lessons" aria-label="阶段一课程列表">
+          <a href="lessons/01.html" class="phase-lesson-link">
+            <span class="lesson-num">01</span>
+            <span>全景架构解析</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/02.html" class="phase-lesson-link">
+            <span class="lesson-num">02</span>
+            <span>启动流程与初始化</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/03.html" class="phase-lesson-link">
+            <span class="lesson-num">03</span>
+            <span>权限系统</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+        </nav>
+      </article>
+
+      <!-- 阶段二 -->
+      <article class="phase-card reveal delay-200">
+        <div class="phase-number">Phase 02</div>
+        <span class="phase-icon" aria-hidden="true">⚙️</span>
+        <h3 class="phase-title">命令与工具核心</h3>
+        <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-lg);">
+          深入命令解析系统与工具执行层，理解 Shell 与文件操作的底层实现。
+        </p>
+        <nav class="phase-lessons" aria-label="阶段二课程列表">
+          <a href="lessons/04.html" class="phase-lesson-link">
+            <span class="lesson-num">04</span>
+            <span>命令系统</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/05.html" class="phase-lesson-link">
+            <span class="lesson-num">05</span>
+            <span>工具系统架构</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/06.html" class="phase-lesson-link">
+            <span class="lesson-num">06</span>
+            <span>Shell 执行工具</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/07.html" class="phase-lesson-link">
+            <span class="lesson-num">07</span>
+            <span>文件操作工具</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+        </nav>
+      </article>
+
+      <!-- 阶段三 -->
+      <article class="phase-card reveal delay-300">
+        <div class="phase-number">Phase 03</div>
+        <span class="phase-icon" aria-hidden="true">🧠</span>
+        <h3 class="phase-title">智能引擎</h3>
+        <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-lg);">
+          解析查询引擎与代理工具的设计，理解 AI 推理与工具调用的协作机制。
+        </p>
+        <nav class="phase-lessons" aria-label="阶段三课程列表">
+          <a href="lessons/08.html" class="phase-lesson-link">
+            <span class="lesson-num">08</span>
+            <span>QueryEngine 查询引擎</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/09.html" class="phase-lesson-link">
+            <span class="lesson-num">09</span>
+            <span>智能代理工具</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/10.html" class="phase-lesson-link">
+            <span class="lesson-num">10</span>
+            <span>技能系统</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+        </nav>
+      </article>
+
+      <!-- 阶段四 -->
+      <article class="phase-card reveal delay-100">
+        <div class="phase-number">Phase 04</div>
+        <span class="phase-icon" aria-hidden="true">🖥️</span>
+        <h3 class="phase-title">状态与界面</h3>
+        <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-lg);">
+          探索状态管理体系与 React+Ink 终端 UI 的渲染机制及主题系统。
+        </p>
+        <nav class="phase-lessons" aria-label="阶段四课程列表">
+          <a href="lessons/11.html" class="phase-lesson-link">
+            <span class="lesson-num">11</span>
+            <span>状态管理系统</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/12.html" class="phase-lesson-link">
+            <span class="lesson-num">12</span>
+            <span>React + Ink 终端 UI</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/13.html" class="phase-lesson-link">
+            <span class="lesson-num">13</span>
+            <span>主题与快捷键</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+        </nav>
+      </article>
+
+      <!-- 阶段五 -->
+      <article class="phase-card reveal delay-200">
+        <div class="phase-number">Phase 05</div>
+        <span class="phase-icon" aria-hidden="true">⚡</span>
+        <h3 class="phase-title">性能与可观测性</h3>
+        <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-lg);">
+          研究启动性能优化策略与内存管理诊断系统的设计思路。
+        </p>
+        <nav class="phase-lessons" aria-label="阶段五课程列表">
+          <a href="lessons/14.html" class="phase-lesson-link">
+            <span class="lesson-num">14</span>
+            <span>启动性能优化</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/15.html" class="phase-lesson-link">
+            <span class="lesson-num">15</span>
+            <span>内存管理与诊断</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+        </nav>
+      </article>
+
+      <!-- 阶段六 -->
+      <article class="phase-card reveal delay-300">
+        <div class="phase-number">Phase 06</div>
+        <span class="phase-icon" aria-hidden="true">🔌</span>
+        <h3 class="phase-title">生态与扩展</h3>
+        <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-lg);">
+          深入插件系统架构、服务层集成模式及 IDE 桥接与部署运维实践。
+        </p>
+        <nav class="phase-lessons" aria-label="阶段六课程列表">
+          <a href="lessons/16.html" class="phase-lesson-link">
+            <span class="lesson-num">16</span>
+            <span>插件系统</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/17.html" class="phase-lesson-link">
+            <span class="lesson-num">17</span>
+            <span>服务层集成</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/18.html" class="phase-lesson-link">
+            <span class="lesson-num">18</span>
+            <span>IDE 桥接与部署运维</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+        </nav>
+      </article>
+
+      <!-- 专题篇 -->
+      <article class="phase-card reveal delay-100" style="grid-column: 1 / -1;">
+        <div class="phase-number">Phase 07</div>
+        <span class="phase-icon" aria-hidden="true">🔬</span>
+        <h3 class="phase-title">专题篇 · Harness Engineering</h3>
+        <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-lg);">
+          深入上下文管理、记忆系统、多智能体协作、工具扩展与 CLI 集成架构，构建完整的 Harness Engineering 能力体系。
+        </p>
+        <nav class="phase-lessons" aria-label="专题篇课程列表" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-xs);">
+          <a href="lessons/19.html" class="phase-lesson-link">
+            <span class="lesson-num">19</span>
+            <span>上下文管理与模型路由</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/20.html" class="phase-lesson-link">
+            <span class="lesson-num">20</span>
+            <span>复杂工程理解与资产提取</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/21.html" class="phase-lesson-link">
+            <span class="lesson-num">21</span>
+            <span>自主记忆与个性化</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/22.html" class="phase-lesson-link">
+            <span class="lesson-num">22</span>
+            <span>长程任务与多智能体协作</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/23.html" class="phase-lesson-link">
+            <span class="lesson-num">23</span>
+            <span>工具能力扩展</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/24.html" class="phase-lesson-link">
+            <span class="lesson-num">24</span>
+            <span>CLI-first 与开放集成架构</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+          <a href="lessons/25.html" class="phase-lesson-link">
+            <span class="lesson-num">25</span>
+            <span>Harness Engineering 综合篇</span>
+            <span style="margin-left:auto; font-size:10px; color: var(--accent-green);">▶</span>
+          </a>
+        </nav>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     学习路径推荐
+═══════════════════════════════════════════════════════════ -->
+<section class="paths-section" id="paths" aria-label="学习路径推荐">
+  <div class="container">
+
+    <div class="text-center mb-xl reveal">
+      <p class="section-label">学习路径</p>
+      <h2 class="section-title">选择适合你的节奏</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        无论你是想快速了解核心、系统学习，还是深度研读每一个细节，
+        我们都为你规划了合适的路径。
+      </p>
+      <div class="section-divider" style="margin: var(--space-lg) auto;"></div>
+    </div>
+
+    <div class="paths-grid">
+
+      <!-- 快速入门 -->
+      <div class="path-card reveal delay-100">
+        <div class="path-icon" aria-hidden="true">🏃</div>
+        <h3 class="path-name">快速入门</h3>
+        <p class="path-desc">
+          聚焦最核心的架构认知，跳过实现细节，
+          适合时间紧张的工程师快速建立对 Claude Code 的整体印象。
+        </p>
+        <div class="path-lessons-list">
+          <span class="path-lesson-tag">第01课</span>
+          <span class="path-lesson-tag">第02课</span>
+          <span class="path-lesson-tag">第04课</span>
+          <span class="path-lesson-tag">第05课</span>
+          <span class="path-lesson-tag">第08课</span>
+          <span class="path-lesson-tag">第11课</span>
+          <span class="path-lesson-tag">第16课</span>
+          <span class="path-lesson-tag">第17课</span>
+        </div>
+        <div class="path-meta">
+          <span>📚 8 节课</span>
+          <span>⏱️ 约 8–10 小时</span>
+          <span>⭐ 基础</span>
+        </div>
+      </div>
+
+      <!-- 标准学习（推荐） -->
+      <div class="path-card featured reveal delay-200">
+        <div class="path-icon" aria-hidden="true">🎯</div>
+        <h3 class="path-name">标准学习</h3>
+        <p class="path-desc">
+          涵盖所有核心模块与关键实现细节，适合有一定 TypeScript
+          基础、想系统掌握 AI 工具设计模式的开发者。
+        </p>
+        <div class="path-lessons-list">
+          <span class="path-lesson-tag">第01课</span>
+          <span class="path-lesson-tag">第02课</span>
+          <span class="path-lesson-tag">第03课</span>
+          <span class="path-lesson-tag">第04课</span>
+          <span class="path-lesson-tag">第05课</span>
+          <span class="path-lesson-tag">第06课</span>
+          <span class="path-lesson-tag">第08课</span>
+          <span class="path-lesson-tag">第09课</span>
+          <span class="path-lesson-tag">第11课</span>
+          <span class="path-lesson-tag">第12课</span>
+          <span class="path-lesson-tag">第14课</span>
+          <span class="path-lesson-tag">第16课</span>
+          <span class="path-lesson-tag">第17课</span>
+          <span class="path-lesson-tag">第18课</span>
+          <span class="path-lesson-tag">第10课</span>
+        </div>
+        <div class="path-meta">
+          <span>📚 15 节课</span>
+          <span>⏱️ 约 15–20 小时</span>
+          <span>⭐⭐ 进阶</span>
+        </div>
+      </div>
+
+      <!-- 完整学习 -->
+      <div class="path-card reveal delay-300">
+        <div class="path-icon" aria-hidden="true">🏆</div>
+        <h3 class="path-name">完整学习</h3>
+        <p class="path-desc">
+          按顺序学完全部 25 节课，深入每一个模块的设计决策与实现细节，
+          适合希望完全掌握 Claude Code 源码的深度学习者。
+        </p>
+        <div class="path-lessons-list">
+          <span class="path-lesson-tag">第01–18课</span>
+          <span class="path-lesson-tag">第19–25课</span>
+          <span class="path-lesson-tag">全部模块</span>
+          <span class="path-lesson-tag">含思考题</span>
+          <span class="path-lesson-tag">含扩展阅读</span>
+        </div>
+        <div class="path-meta">
+          <span>📚 25 节课</span>
+          <span>⏱️ 约 25+ 小时</span>
+          <span>⭐⭐⭐ 深度</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 学习路径流程图 -->
+    <div class="reveal mt-xl">
+      <div class="mermaid-container">
+        <h3 style="font-size: var(--font-size-md); color: var(--text-heading); margin-bottom: var(--space-lg); text-align: center;">
+          推荐学习顺序
+        </h3>
+        <div class="mermaid">
+graph LR
+    A["🌐 第01课<br/>全景架构"] --> B["🚀 第02课<br/>启动流程"]
+    B --> C["🔐 第03课<br/>权限系统"]
+    C --> D["⌨️ 第04课<br/>命令系统"]
+    D --> E["🔧 第05课<br/>工具架构"]
+    E --> F["💻 第06-07课<br/>Shell &amp; 文件"]
+    F --> G["🧠 第08课<br/>QueryEngine"]
+    G --> H["🤖 第09-10课<br/>代理 &amp; 技能"]
+    H --> I["📊 第11-13课<br/>状态 &amp; UI"]
+    I --> J["⚡ 第14-15课<br/>性能 &amp; 内存"]
+    J --> K["🔌 第16-18课<br/>插件 &amp; 生态"]
+    K --> L["🔬 第19-25课<br/>专题 &amp; Harness"]
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     技术栈展示
+═══════════════════════════════════════════════════════════ -->
+<section class="tech-section" id="tech-stack" aria-label="技术栈">
+  <div class="container">
+
+    <div class="text-center reveal">
+      <p class="section-label">技术栈</p>
+      <h2 class="section-title">你将深入掌握的技术</h2>
+      <p class="section-subtitle" style="margin: 0 auto;">
+        Claude Code 综合运用了多项现代前端与 CLI 技术。
+        学完本系列，你对这些技术的理解将达到生产级深度。
+      </p>
+      <div class="section-divider" style="margin: var(--space-lg) auto;"></div>
+    </div>
+
+    <div class="tech-grid reveal">
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #f7df1e;"></span>
+        <span>TypeScript</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #f47521;"></span>
+        <span>Bun Runtime</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #61dafb;"></span>
+        <span>React</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: var(--accent-cyan);"></span>
+        <span>Ink (终端 UI)</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: var(--accent-blue);"></span>
+        <span>Zod (Schema)</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #e34f26;"></span>
+        <span>Commander.js</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: var(--accent-green);"></span>
+        <span>Anthropic SDK</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #a855f7;"></span>
+        <span>MCP 协议</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: var(--accent-orange);"></span>
+        <span>LSP 协议</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #ce422b;"></span>
+        <span>ripgrep</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #dea584;"></span>
+        <span>Rust (底层)</span>
+      </div>
+
+      <div class="tech-pill">
+        <span class="tech-dot" style="background: #4f46e5;"></span>
+        <span>IntersectionObserver</span>
+      </div>
+
+    </div>
+
+    <!-- 技术关系说明 -->
+    <div class="reveal mt-xl" style="max-width: 800px; margin: var(--space-xl) auto 0;">
+      <div class="card" style="padding: var(--space-xl);">
+        <h3 style="font-size: var(--font-size-md); color: var(--text-heading); margin-bottom: var(--space-lg);">
+          🔗 技术关系概览
+        </h3>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-lg);">
+
+          <div>
+            <p class="section-label" style="margin-bottom: var(--space-sm);">运行时层</p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              Bun 提供快速 TypeScript 运行时，内置打包与原生模块支持，
+              替代传统 Node.js + webpack 组合。
+            </p>
+          </div>
+
+          <div>
+            <p class="section-label" style="margin-bottom: var(--space-sm);">UI 渲染层</p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              React + Ink 将组件化思维引入终端界面，
+              实现响应式布局和实时流式渲染。
+            </p>
+          </div>
+
+          <div>
+            <p class="section-label" style="margin-bottom: var(--space-sm);">AI 集成层</p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              Anthropic SDK 驱动模型调用，Zod 负责工具参数校验，
+              MCP 协议标准化外部工具集成。
+            </p>
+          </div>
+
+          <div>
+            <p class="section-label" style="margin-bottom: var(--space-sm);">搜索与性能层</p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              ripgrep（Rust 实现）提供超高速代码搜索，
+              Rust crates 承担部分高性能计算任务。
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     CTA 区域
+═══════════════════════════════════════════════════════════ -->
+<section class="section" style="background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);">
+  <div class="container text-center">
+    <div class="reveal">
+      <h2 class="section-title">准备好开始了吗？</h2>
+      <p style="font-size: var(--font-size-md); color: var(--text-secondary); max-width: 520px; margin: var(--space-md) auto var(--space-xl);">
+        从第一课开始，系统性地理解 Claude Code 的每一个设计决策。
+      </p>
+      <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
+        <a href="lessons/01.html" class="btn btn-primary" style="font-size: var(--font-size-md); padding: 14px 32px;">
+          <span>🚀</span>
+          <span>从第一课开始</span>
+        </a>
+        <a href="#phases" class="btn btn-outline" style="font-size: var(--font-size-md); padding: 14px 32px;">
+          <span>📋</span>
+          <span>查看全部课程</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════
+     页脚
+═══════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="#overview">课程概览</a>
+        <a href="#phases">学习阶段</a>
+        <a href="#paths">学习路径</a>
+        <a href="#tech-stack">技术栈</a>
+      </nav>
+
+      <p class="footer-copy">
+        © 2026 Claude Code 教程 · 仅供学习研究
+      </p>
+
+    </div>
+  </div>
+</footer>
+
+<!-- 公共 JS -->
+<script src="js/main.js"></script>
+
+</body>
+</html>

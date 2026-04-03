@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第04课：命令系统 — 从斜杠到执行 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 命令系统的三种命令类型、注册与发现机制、斜杠命令解析流程和命令生命周期。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    #progress-bar { background: var(--gradient-accent); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-blue">第二阶段 · 核心系统深度解析</span>
+      <span class="sep">/</span>
+      <span>第04课</span>
+    </nav>
+
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 04 · PHASE 02</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      命令系统<br/>
+      <span class="gradient-text">从斜杠到执行</span>
+    </h1>
+
+    <div class="lesson-meta">
+      <span class="tag tag-blue">第二阶段 · 核心系统</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐ 中级</span>
+      <span class="tag tag-green">3 种类型 · 动态发现</span>
+    </div>
+
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解 Claude Code 命令系统的三种命令类型（prompt / local / local-jsx）及其适用场景</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握命令注册与发现的完整机制：静态内置 + 动态技能 + 插件命令的协作方式</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>深入理解斜杠命令解析流程，从字符串输入到结构化 <code>{commandName, args, isMcp}</code></span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>熟悉命令生命周期与队列处理器的"逐条隔离 vs 批量处理"策略</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>了解动态技能插入的去重算法与 Feature Flag 条件导入模式</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-vs">命令 vs 工具</a></div>
+        <div class="toc-item sub"><a href="#concept-types">命令的三种类型</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 整体架构图</a></div>
+        <div class="toc-item sub"><a href="#arch-principles">2.2 设计思想</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-feature">3.1 Feature Flag 条件导入</a></div>
+        <div class="toc-item sub"><a href="#code-registry">3.2 COMMANDS() 注册表</a></div>
+        <div class="toc-item sub"><a href="#code-aggregate">3.3 命令聚合与动态去重</a></div>
+        <div class="toc-item sub"><a href="#code-availability">3.4 可用性检查</a></div>
+        <div class="toc-item sub"><a href="#code-parsing">3.5 斜杠命令解析</a></div>
+        <div class="toc-item"><a href="#patterns">§ 设计模式提炼</a></div>
+        <div class="toc-item"><a href="#lifecycle">§ 命令生命周期</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-vs" class="reveal">
+          <h3 class="content-h3">命令 vs 工具 — 职责分工</h3>
+          <p class="content-p">很多初学者会混淆"命令"与"工具"这两个概念。在 Claude Code 中它们有清晰的分工：</p>
+
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th>命令（Command）</th>
+                <th>工具（Tool）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>触发方式</strong></td>
+                <td>用户输入 <code>/xxx</code></td>
+                <td>模型在推理中调用</td>
+              </tr>
+              <tr>
+                <td><strong>使用者</strong></td>
+                <td>人类用户（或模型）</td>
+                <td>AI 模型</td>
+              </tr>
+              <tr>
+                <td><strong>典型场景</strong></td>
+                <td><code>/clear</code>、<code>/help</code>、<code>/review</code></td>
+                <td><code>Bash</code>、<code>FileRead</code>、<code>FileEdit</code></td>
+              </tr>
+              <tr>
+                <td><strong>注册入口</strong></td>
+                <td><code>src/commands.ts</code></td>
+                <td><code>src/tools.ts</code></td>
+              </tr>
+              <tr>
+                <td><strong>类型系统</strong></td>
+                <td><code>src/types/command.ts</code></td>
+                <td><code>src/Tool.ts</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="concept-types" class="reveal">
+          <h3 class="content-h3">命令的三种类型</h3>
+
+          <div class="mermaid-container">
+            <div class="mermaid">
+classDiagram
+  class CommandBase {
+    +string name
+    +string[] aliases
+    +string description
+    +boolean isHidden
+    +string[] availability
+    +isEnabled() boolean
+    +userFacingName() string
+  }
+  class PromptCommand {
+    +type = "prompt"
+    +string progressMessage
+    +string[] argNames
+    +string[] allowedTools
+    +string source
+    +string agent
+    +getPromptForCommand(args, context)
+  }
+  class LocalCommand {
+    +type = "local"
+    +boolean supportsNonInteractive
+    +load()
+  }
+  class LocalJSXCommand {
+    +type = "local-jsx"
+    +load()
+  }
+  CommandBase <|.. PromptCommand : "实现"
+  CommandBase <|.. LocalCommand  : "实现"
+  CommandBase <|.. LocalJSXCommand : "实现"
+            </div>
+          </div>
+
+          <div class="grid-2" style="gap: var(--space-md); margin-top: var(--space-lg);">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-family: var(--font-code); font-size: 11px; color: var(--accent-blue); margin-bottom: var(--space-sm);">PROMPT COMMAND</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">提示型</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">本质是一段提示词模板，调用后将生成的提示词注入到对话中，触发模型推理。例如 <code>/review</code>、<code>/commit</code>。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-green);">
+              <div style="font-family: var(--font-code); font-size: 11px; color: var(--accent-green); margin-bottom: var(--space-sm);">LOCAL COMMAND</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">本地型</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">纯前端逻辑命令，直接执行 TypeScript 代码，返回文本或压缩后的结果消息，不走 AI 模型。例如 <code>/clear</code>、<code>/files</code>。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-purple);">
+              <div style="font-family: var(--font-code); font-size: 11px; color: var(--accent-purple); margin-bottom: var(--space-sm);">LOCAL JSX COMMAND</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">本地 JSX 型</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">渲染 React/Ink UI 组件的命令，用于复杂交互界面。例如 <code>/context</code>（彩色网格展示 token 使用）。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 整体架构图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+  subgraph "输入层"
+    User["用户输入 /cmd arg"]
+    Parser["斜杠解析器 slashCommandParsing.ts"]
+  end
+  subgraph "注册与聚合层"
+    CMD["命令聚合器 commands.ts"]
+    Types["类型契约 types/command.ts"]
+    Skills["技能加载器 loadSkillsDir.ts"]
+    Plugins["插件加载器 loadPluginCommands.ts"]
+  end
+  subgraph "调度层"
+    MQ["消息队列 messageQueueManager.ts"]
+    QP["队列处理器 queueProcessor.ts"]
+  end
+  subgraph "执行层"
+    Local["本地执行 load()"]
+    Prompt["模型调用 getPromptForCommand()"]
+    JSX["UI 渲染 setToolJSX()"]
+  end
+  subgraph "安全层"
+    SEC["安全检查 bashSecurity.ts"]
+    PERM["权限决策 bashPermissions.ts"]
+  end
+
+  User --> Parser
+  Parser --> MQ
+  CMD --> MQ
+  MQ --> QP
+  QP --> Local
+  QP --> Prompt
+  QP --> JSX
+  Prompt --> SEC
+  SEC --> PERM
+  Skills --> CMD
+  Plugins --> CMD
+  Types --> CMD
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-principles" class="reveal">
+          <h3 class="content-h3">2.2 设计思想：为什么这样设计？</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-blue);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 统一类型契约，分散实现</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">所有命令通过 <code>src/types/command.ts</code> 定义唯一的类型契约，具体实现分散到各自目录（<code>src/commands/xxx/</code>）。这符合"<strong>依赖倒置原则</strong>"——高层模块（聚合器）依赖抽象（Command 类型），而不依赖具体实现。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-green);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. Memoize 缓存 + 动态失效</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>loadAllCommands</code> 使用 <code>memoize(cwd)</code> 缓存，避免每次用户输入都触发昂贵的磁盘 I/O 和动态导入。但可用性检查（<code>meetsAvailabilityRequirement</code> / <code>isCommandEnabled</code>）不缓存，保证登录状态变更后立即生效。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-orange);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. Feature Flag 控制构建产物</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">使用 <code>feature('FEATURE_NAME')</code> 的条件导入（而非 if/else 运行时检查），可以在<strong>构建阶段</strong>进行死代码消除（dead code elimination），未启用的功能代码完全不进入构建产物，降低包体积。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-purple);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">4. 动态技能的"后插入"策略</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">动态发现的技能（用户在运行时创建的 <code>.claude/commands/</code> 文件）不走 memoize 缓存，而是在每次 <code>getCommands()</code> 时进行去重后<strong>插入内置命令之前</strong>。这保证了用户自定义技能优先级高于内置命令，同时不破坏缓存机制。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 Feature Flag 条件导入 -->
+        <div id="code-feature" class="reveal">
+          <h3 class="content-h3">代码片段 1：Feature Flag 条件导入（commands.ts L59-122）</h3>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">✂️ 死代码消除（DCE）</span>
+            <span class="pattern-badge">🚩 特性标志</span>
+            <span class="pattern-badge">📦 包体积优化</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/commands.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="1,4,5,9,13,17"><code class="language-typescript">import { feature } from 'bun:bundle'
+
+// Dead code elimination: conditional imports
+const proactive =
+  feature('PROACTIVE') || feature('KAIROS')
+    ? require('./commands/proactive.js').default
+    : null
+
+const briefCommand =
+  feature('KAIROS') || feature('KAIROS_BRIEF')
+    ? require('./commands/brief.js').default
+    : null
+
+const bridge = feature('BRIDGE_MODE')
+  ? require('./commands/bridge/index.js').default
+  : null
+
+const voiceCommand = feature('VOICE_MODE')
+  ? require('./commands/voice/index.js').default
+  : null</code></pre>
+          </div>
+
+          <table class="code-anno-table" style="margin-top: var(--space-md);">
+            <thead>
+              <tr><th>行</th><th>含义</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>import { feature }</td>
+                <td>Bun 专属 API，在<strong>编译时</strong>求值，非运行时</td>
+              </tr>
+              <tr>
+                <td>feature('PROACTIVE')</td>
+                <td>编译时 Boolean 常量，为 false 时整个三元表达式的 <code>require(...)</code> 被裁剪</td>
+              </tr>
+              <tr>
+                <td>require(...).default</td>
+                <td>若 feature 启用，使用 CommonJS require（支持动态路径）</td>
+              </tr>
+              <tr>
+                <td>: null</td>
+                <td>禁用时为 null，后续 <code>...(proactive ? [proactive] : [])</code> 自然跳过</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 编译时特性开关</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>feature('PROACTIVE')</code> 是构建时常量，打包时为 false 的分支整个被消除。外部用户拿到的构建产物里，未启用的功能代码根本不存在——不是运行时跳过，是物理上不存在。这就像一栋楼房按图纸建造时某些房间就没有设计进去，而不是设计了但锁上了。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：用运行时 <code>if (process.env.FEATURE_X)</code> 判断，代码虽然不执行，但仍在产物里，攻击者可以通过逆向分析了解未启用功能的实现细节，增加了攻击面。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 COMMANDS() 注册表 -->
+        <div id="code-registry" class="reveal">
+          <h3 class="content-h3">代码片段 2：COMMANDS() 注册表与内部命令（commands.ts L258-346）</h3>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📋 注册表模式</span>
+            <span class="pattern-badge">🔄 惰性初始化</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/commands.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,8,11,14"><code class="language-typescript">// 声明为函数是为了延迟执行——config 在模块初始化时无法读取
+const COMMANDS = memoize((): Command[] => [
+  addDir,
+  advisor,
+  agents,
+  branch,
+  // ... 60+ 内置命令
+  clear, context, contextNonInteractive, cost,
+  // ...
+  ...(webCmd ? [webCmd] : []),     // 条件性特性命令
+  ...(forkCmd ? [forkCmd] : []),
+  ...(bridge ? [bridge] : []),
+  ...(process.env.USER_TYPE === 'ant' && !process.env.IS_DEMO
+    ? INTERNAL_ONLY_COMMANDS         // 仅 Ant 内部用户可见的命令
+    : []),
+])
+
+// 内部专用命令（外部构建中被消除）
+export const INTERNAL_ONLY_COMMANDS = [
+  backfillSessions,
+  breakCache,
+  bughunter,
+  commit,
+  goodClaude,
+  // ...
+].filter(Boolean)  // 过滤掉 null（feature 禁用时）</code></pre>
+          </div>
+
+          <table class="code-anno-table" style="margin-top: var(--space-md);">
+            <thead>
+              <tr><th>关键点</th><th>设计意图</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>memoize((): Command[])</td><td>第一次调用后结果被缓存，避免重复构建数组（O(n) 操作）</td></tr>
+              <tr><td>...(condition ? [cmd] : [])</td><td>优雅的"可选命令"插入，保持数组字面量的简洁性</td></tr>
+              <tr><td>INTERNAL_ONLY_COMMANDS</td><td>明确划分内部/外部命令边界，不通过注释约定，而是类型化隔离</td></tr>
+              <tr><td>.filter(Boolean)</td><td>处理 feature flag 导致的 null 值，防止"洞"数组（sparse array）问题</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 3.3 命令聚合与动态去重 -->
+        <div id="code-aggregate" class="reveal">
+          <h3 class="content-h3">代码片段 3：命令聚合与动态技能去重（commands.ts L449-517）</h3>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔗 管道过滤器</span>
+            <span class="pattern-badge">⚡ 并发加载</span>
+            <span class="pattern-badge">🔍 O(1) 去重</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/commands.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="5,17,22,25,29,32"><code class="language-typescript">const loadAllCommands = memoize(async (cwd: string): Promise&lt;Command[]&gt; => {
+  const [
+    { skillDirCommands, pluginSkills, bundledSkills, builtinPluginSkills },
+    pluginCommands,
+    workflowCommands,
+  ] = await Promise.all([              // 并发加载，降低冷启动时间
+    getSkills(cwd),
+    getPluginCommands(),
+    getWorkflowCommands ? getWorkflowCommands(cwd) : Promise.resolve([]),
+  ])
+
+  return [
+    ...bundledSkills,        // 编译时内置技能（最高优先级）
+    ...builtinPluginSkills,  // 内置插件提供的技能
+    ...skillDirCommands,     // 用户目录扫描到的技能
+    ...workflowCommands,     // 工作流脚本命令
+    ...pluginCommands,       // 插件命令
+    ...COMMANDS(),           // 内置命令（最后，通常优先级最低）
+  ]
+})
+
+export async function getCommands(cwd: string): Promise&lt;Command[]&gt; {
+  const allCommands = await loadAllCommands(cwd)
+  const dynamicSkills = getDynamicSkills()  // 运行时文件监听发现的新技能
+
+  // 可用性 + 启用状态过滤（不走缓存，保证实时性）
+  const baseCommands = allCommands.filter(
+    _ => meetsAvailabilityRequirement(_) && isCommandEnabled(_),
+  )
+
+  if (dynamicSkills.length === 0) return baseCommands
+
+  // 去重：动态技能名称不能与已有命令重复
+  const baseCommandNames = new Set(baseCommands.map(c => c.name))
+  const uniqueDynamicSkills = dynamicSkills.filter(
+    s =>
+      !baseCommandNames.has(s.name) &&
+      meetsAvailabilityRequirement(s) &&
+      isCommandEnabled(s),
+  )
+
+  // 定位插入点：动态技能插入到内置命令之前
+  const builtInNames = new Set(COMMANDS().map(c => c.name))
+  const insertIndex = baseCommands.findIndex(c => builtInNames.has(c.name))
+
+  return [
+    ...baseCommands.slice(0, insertIndex),
+    ...uniqueDynamicSkills,              // 插入动态技能
+    ...baseCommands.slice(insertIndex),
+  ]
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — loadAllCommands 的并发加载顺序</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：返回数组中命令的顺序直接决定了同名命令的覆盖关系——前面的优先保留。无需额外的优先级字段，<strong>通过数组顺序隐式编码优先级</strong>。编译时内置技能在最前，用户目录技能居中，内置命令在最后——这个设计让用户的自定义永远能"盖住"内置命令，符合用户期望。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 可用性检查 -->
+        <div id="code-availability" class="reveal">
+          <h3 class="content-h3">代码片段 4：可用性检查（commands.ts L417-443）</h3>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🎯 策略模式</span>
+            <span class="pattern-badge">✅ 穷举编译检查</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/commands.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="4,7,14,20,24"><code class="language-typescript">/**
+ * 过滤命令的 `availability`（auth/provider 要求）。
+ * 不做 Memoize —— auth 状态可能在会话中变更（如 /login）。
+ */
+export function meetsAvailabilityRequirement(cmd: Command): boolean {
+  if (!cmd.availability) return true  // 无限制，对所有人可见
+  for (const a of cmd.availability) {
+    switch (a) {
+      case 'claude-ai':
+        if (isClaudeAISubscriber()) return true  // claude.ai 订阅用户
+        break
+      case 'console':
+        // Console = 直接使用 Anthropic 第一方 API 的用户
+        if (
+          !isClaudeAISubscriber() &&
+          !isUsing3PServices() &&
+          isFirstPartyAnthropicBaseUrl()
+        )
+          return true
+        break
+      default: {
+        // 穷举检查：TypeScript 编译器确保枚举值都被处理
+        const _exhaustive: never = a
+        void _exhaustive
+        break
+      }
+    }
+  }
+  return false  // 所有 availability 都不满足
+}</code></pre>
+          </div>
+
+          <table class="code-anno-table" style="margin-top: var(--space-md);">
+            <thead>
+              <tr><th>行</th><th>含义</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>if (!cmd.availability) return true</td><td>无 availability 字段 = 通用命令，对所有人可见</td></tr>
+              <tr><td>case 'claude-ai'</td><td>仅 claude.ai 订阅用户可见（如 <code>/upgrade</code>）</td></tr>
+              <tr><td>case 'console'</td><td>仅直接 API 用户可见（如企业功能）</td></tr>
+              <tr><td>const _exhaustive: never = a</td><td><strong>穷举类型技巧</strong>：若 availability 枚举新增值，编译器在此报错，提醒开发者处理</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 穷举编译时检查</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>const _exhaustive: never = a</code> 是一个 TypeScript 的编译器陷阱。<code>never</code> 类型的变量只能接受"不可能存在的值"，当 switch/case 已经处理了所有枚举分支时，剩下的 <code>a</code> 就是 <code>never</code> 类型，赋值合法。一旦枚举新增了 <code>'bedrock'</code> 这样的新值，这里就会编译报错——强制开发者处理新情况，而不是静默漏掉。就像合同签署前的清单，每一项都确认过才能签字。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 斜杠命令解析 -->
+        <div id="code-parsing" class="reveal">
+          <h3 class="content-h3">代码片段 5：斜杠命令解析（slashCommandParsing.ts 关键逻辑）</h3>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔤 字符串解析</span>
+            <span class="pattern-badge">🔌 MCP 集成</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/slashCommandParsing.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="3,4,8,12"><code class="language-typescript">export function parseSlashCommand(input: string): {
+  commandName: string
+  args: string
+  isMcp: boolean
+} | null {
+  const trimmed = input.trim()
+  if (!trimmed.startsWith('/')) return null  // 不是斜杠命令
+
+  const withoutSlash = trimmed.slice(1)      // 去掉 '/'
+  const parts = withoutSlash.split(' ')
+  const firstPart = parts[0]
+
+  // 识别 MCP 命令格式: "/cmd (MCP) args"
+  if (parts[1] === '(MCP)') {
+    return {
+      commandName: `${firstPart} (MCP)`,    // 命令名包含 "(MCP)" 后缀
+      args: parts.slice(2).join(' '),        // "(MCP)" 后的部分为参数
+      isMcp: true,
+    }
+  }
+
+  return {
+    commandName: firstPart,
+    args: parts.slice(1).join(' '),          // 第一个词后为参数
+    isMcp: false,
+  }
+}</code></pre>
+          </div>
+
+          <div class="mermaid-container" style="margin-top: var(--space-lg);">
+            <div class="mermaid">
+flowchart TD
+  A["输入字符串"] --> B["trim()"]
+  B --> C{"以 '/' 开头？"}
+  C -- 否 --> R["返回 null"]
+  C -- 是 --> D["去掉 '/' 并按空格切分"]
+  D --> E{"第二段是 '(MCP)'？"}
+  E -- 是 --> F["commandName += ' (MCP)', isMcp=true"]
+  E -- 否 --> G["commandName=第一段, isMcp=false"]
+  F --> H["args = 剩余片段拼接"]
+  G --> H
+  H --> I["返回 {commandName, args, isMcp}"]
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 设计模式提炼 -->
+      <section class="content-section" id="patterns">
+        <div class="reveal">
+          <p class="section-label">设计模式</p>
+          <h2 class="content-h2">设计模式提炼</h2>
+        </div>
+
+        <div class="grid-2 reveal" style="gap: var(--space-lg);">
+          <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">📋 注册表模式（Registry Pattern）</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">集中维护命令清单，通过数组声明式注册，支持运行时查询（<code>findCommand</code>、<code>getCommand</code>）。</p>
+            <div class="code-block">
+              <div class="code-block-header">
+                <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+                <span class="code-block-lang">TypeScript</span>
+                <button class="code-copy-btn" aria-label="复制代码">复制</button>
+              </div>
+              <pre><code class="language-typescript">const COMMANDS = memoize((): Command[] => [
+  clear, help, login, ...
+])
+
+export function findCommand(commands: Command[], name: string) {
+  return commands.find(c =>
+    c.name === name || c.aliases?.includes(name)
+  )
+}</code></pre>
+            </div>
+          </div>
+
+          <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-green);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">✂️ 编译时特性开关（Compile-time Feature Toggle）</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">通过构建工具在编译阶段决定代码是否包含，实现零运行时开销的特性管理。</p>
+          </div>
+
+          <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-orange);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">⚡ 惰性并发加载（Lazy Concurrent Loading）</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">首次调用时并发加载所有命令源，结果缓存以 <code>cwd</code> 为键，后续调用直接返回缓存。</p>
+          </div>
+
+          <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-purple);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">✅ 穷举编译检查（Exhaustive Check）</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">利用 TypeScript 的 <code>never</code> 类型，当枚举值未被 switch/case 覆盖时，编译阶段报错，防止运行时遗漏。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 命令生命周期 -->
+      <section class="content-section" id="lifecycle">
+        <div class="reveal">
+          <p class="section-label">生命周期</p>
+          <h2 class="content-h2">命令生命周期详解</h2>
+        </div>
+
+        <div class="mermaid-container reveal">
+          <div class="mermaid">
+sequenceDiagram
+  participant U as 用户
+  participant Parser as 斜杠解析器
+  participant MQ as 消息队列
+  participant QP as 队列处理器
+  participant CMD as 命令实现
+  participant Life as 生命周期监听
+
+  U->>Parser: 输入 "/review --files src/"
+  Parser-->>MQ: {commandName: "review", args: "--files src/", isMcp: false}
+  MQ-->>QP: 通知有新消息
+  QP->>QP: peek() 判断消息类型
+  alt 斜杠命令
+    QP->>QP: 逐条执行（隔离模式）
+  else 普通文本
+    QP->>QP: 批量按模式执行
+  end
+  QP->>Life: notifyCommandLifecycle("started")
+  QP->>CMD: load() / getPromptForCommand()
+  CMD-->>U: 流式输出结果
+  QP->>Life: notifyCommandLifecycle("completed")
+          </div>
+        </div>
+
+        <div class="callout callout-info" style="margin-top: var(--space-lg);">
+          <div class="callout-title"><span>📋</span> 队列处理器的两种策略</div>
+          <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-sm);">
+            <li><strong>斜杠命令/Bash 命令：逐条处理</strong>。确保错误隔离，一条命令失败不影响下一条；进度 UI 可以准确反映单条命令状态。</li>
+            <li><strong>普通文本消息：按模式批量处理</strong>。提升吞吐量，减少 UI 刷新频率。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">🏗️ 4.1 Harness Engineering 视角</h3>
+          <p class="content-p">
+            命令系统是 Claude Code 驾驭层的"用户接口层"——它把用户意图（<code>/review</code>、<code>/commit</code>）转化为对 AI 的精确调度，同时管控哪些命令在哪些环境下可以运行。
+          </p>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🎯</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 命令作为 AI 能力的驾驭入口</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">PromptCommand 的本质是一段提示词模板，它约束了 AI 的回应范围。<code>/review</code> 命令不是让 AI 随意聊，而是注入特定的审核提示词，驱动 AI 按预期方式工作。这是 Harness 思维的体现：<strong>通过结构化的命令接口，将 AI 的强大能力导向特定目标</strong>。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">👤</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 可用性检查作为环境约束</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>meetsAvailabilityRequirement</code> 根据用户的身份（订阅类型、API 来源）动态决定哪些命令可见。这是 Harness 层对 AI 能力的环境约束——不同用户看到不同的命令菜单，AI 的能力边界随用户环境而变化。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔐</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. REMOTE_SAFE_COMMANDS 的最小权限</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">远程/桥接模式下，命令白名单确保 AI 在不同网络环境中只暴露安全子集。这是 Harness 对 AI 工具集的主动裁剪——根据运行环境动态调整 AI 的"手术刀"集合。</p>
+              </div>
+            </div>
+          </div>
+
+          <blockquote style="border-left: 4px solid var(--accent-purple); padding: var(--space-md) var(--space-lg); background: #faf5ff; border-radius: 0 var(--radius-md) var(--radius-md) 0; margin: var(--space-lg) 0; font-style: italic; color: var(--text-secondary);">
+            "命令系统是 Harness 对用户意图的精确转化层——把自然语言意图（'帮我提交'）变成对 AI 的结构化指令。"
+          </blockquote>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">💡 4.2 对大模型应用的启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-blue);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 提示词模板是连接用户意图和 AI 能力的关键桥梁</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Claude Code 的 PromptCommand 本质就是一套"意图→提示词"的转换器。你的应用也可以为常见用户任务（代码审查、文档生成、数据分析）设计固定的提示词模板，让 AI 的行为更可预期、更符合场景。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-green);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 缓存策略要与状态变化频率匹配</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>loadAllCommands</code> 以 <code>cwd</code> 为键缓存，但可用性检查（auth 状态）不缓存。你的应用在设计缓存时要分清"什么变化慢"（命令列表）和"什么变化快"（用户状态），对应采用不同的缓存策略。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-orange);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. 特性开关要做到"编译时消除"而非"运行时跳过"</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">未启用的功能不应该出现在生产构建产物中。如果你用 Bun、Webpack 等工具，可以利用 tree-shaking + 编译时常量实现这一点，减少攻击面，也减小包体积。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-purple);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">4. 用户扩展点要有明确的优先级规则</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">用户自定义技能、插件命令、内置命令之间的优先级通过数组顺序隐式编码。设计你的应用时，同样需要明确"系统预设"、"用户自定义"、"临时覆盖"的优先级，并告知用户。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：为什么 COMMANDS() 设计为返回函数而非导出数组？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：模块初始化时，config 系统可能还没加载完成。如果 <code>COMMANDS</code> 是导出的数组（模块加载时立即求值），其中依赖 config 值的命令（如某些 feature flag 判断）会读到未初始化的状态，出现不确定行为。设计为函数并用 <code>memoize</code> 包裹，第一次调用时才求值，此时 config 已经就绪。这是"惰性初始化"模式的典型应用。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：loadAllCommands 以 cwd 为缓存键，如果用户切换工作目录，会发生什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：切换工作目录时，新的 <code>cwd</code> 会产生一个新的缓存键，<code>memoize</code> 会重新执行 <code>loadAllCommands</code>，从新目录加载技能和插件。同时，系统会调用 <code>clearCommandsCache()</code> 清除旧缓存，防止内存泄漏。这意味着不同工作目录可能有不同的可用命令（因为不同项目有不同的 <code>.claude/commands/</code> 技能文件）。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：为什么动态技能（运行时发现）不走 memoize 缓存，而是每次重新过滤？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：动态技能是通过文件监听器（<code>skillChangeDetector</code>）在运行时发现的，用户可能随时创建新的技能文件。如果将动态技能纳入 memoize 缓存，缓存命中时新创建的技能就不会出现，用户要等缓存失效才能用新技能。将动态技能单独处理（每次查询时合并），确保了实时性，而静态命令列表依然走缓存保证性能。这是"热点数据实时，冷数据缓存"的权衡策略。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：feature() 与 process.env.USER_TYPE === 'ant' 两种条件导入有何本质区别？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>feature()</code> 是 Bun 的编译时 API，在构建阶段求值，为 false 的分支被 DCE（死代码消除）彻底从产物中移除，运行时这段代码不存在；而 <code>process.env.USER_TYPE === 'ant'</code> 是运行时检查，代码始终存在于产物中，只是执行时走不同分支。前者的安全性更高（攻击者看不到未启用的代码），产物体积更小；后者更灵活，可以通过环境变量在运行时改变行为，但代码无法被消除。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 进阶方向 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 插件命令命名空间</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">深入阅读 <strong>src/utils/plugins/loadPluginCommands.ts</strong> — 了解插件命令的命名空间（<code>pluginName:namespace:basename</code>）和变量替换机制</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 技能热重载</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">在 <code>~/.claude/commands/</code> 创建一个 Markdown 技能文件，观察 <code>skillChangeDetector</code> 的热重载行为</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 命令执行链路</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">从 <strong>src/hooks/useCommandQueue.ts</strong> 追踪一次斜杠命令的完整执行链路</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔄</span> Prompt vs Local 执行差异</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">对比 prompt 型命令的 <code>getPromptForCommand</code> 与 local 型命令的 <code>load()</code> 在执行引擎中的差异</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">
+              Claude Code 命令系统的核心设计精华：
+            </p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>三类命令</strong>：prompt（提示词驱动）、local（纯代码）、local-jsx（UI 渲染）各司其职</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>编译时 DCE</strong>：Feature Flag 让未启用功能代码完全不存在于产物中</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>数组顺序即优先级</strong>：用户技能 > 插件命令 > 内置命令，无需额外字段</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>穷举类型检查</strong>：<code>never</code> 类型陷阱确保枚举扩展时编译器提醒处理</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 课程导航页脚 -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="03.html" class="nav-prev">
+          ← 上一课：权限系统
+        </a>
+
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+        <a href="05.html" class="nav-next">
+          下一课：工具系统 →
+        </a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="03.html">← 上一课</a>
+        <a href="05.html">下一课 →</a>
+      </nav>
+
+      <p class="footer-copy">
+        第04课 · 命令系统 — 从斜杠到执行 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

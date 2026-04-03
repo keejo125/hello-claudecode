@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第23课：工具能力扩展（MCP + 技能 + 生态）| Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 的 MCP 传输类型、connectToServer 连接生命周期、技能五路加载架构与插件系统分层设计。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    /* ── 课程页面专属布局 ─── */
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    /* ── 侧边栏目录 ─── */
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    /* ── 主内容区 ─── */
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    /* ── 章节容器 ─── */
+    .content-section {
+      margin-bottom: var(--space-3xl);
+    }
+
+    .content-section:last-child { margin-bottom: 0; }
+
+    /* ── 架构层级表格 ─── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── 对比表 ─── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    /* ── 代码注释解析表 ─── */
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    /* ── 学习目标清单 ─── */
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    /* ── 课程导航按钮 ─── */
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    /* ── 响应式 ─── */
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    /* ── 内联 code ─── */
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* ── 强调文字 ─── */
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    /* ── 节内容标题 ─── */
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    /* ── 进度条颜色 ─── */
+    #progress-bar { background: var(--gradient-accent); }
+
+    /* ── 设计点评 ─── */
+    blockquote.design-review {
+      background: #fffbeb;
+      border-left: 4px solid var(--accent-orange);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: var(--space-lg);
+      margin: var(--space-lg) 0;
+    }
+
+    blockquote.design-review p {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-sm);
+    }
+
+    blockquote.design-review p:last-child { margin-bottom: 0; }
+
+    /* ── 思考题折叠 ─── */
+    details.quiz-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-md);
+      overflow: hidden;
+    }
+
+    details.quiz-item summary {
+      padding: var(--space-md) var(--space-lg);
+      font-weight: 600;
+      color: var(--text-heading);
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      line-height: 1.5;
+    }
+
+    details.quiz-item summary::-webkit-details-marker { display: none; }
+
+    details.quiz-item summary::before {
+      content: '▶';
+      font-size: 10px;
+      color: var(--accent-blue);
+      margin-top: 3px;
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+
+    details.quiz-item[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    details.quiz-item .quiz-answer {
+      padding: var(--space-lg);
+      padding-top: 0;
+      border-top: 1px solid var(--border-subtle);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    details.quiz-item[open] .quiz-answer {
+      padding-top: var(--space-md);
+    }
+  </style>
+</head>
+<body>
+
+<!-- 顶部进度条 -->
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     导航栏
+═══════════════════════════════════════════════════════════ -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson23">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson23" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     课程 Hero 区域
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-header">
+  <div class="container">
+    <!-- 面包屑 -->
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">专题篇 · 深度进阶</span>
+      <span class="sep">/</span>
+      <span>第23课</span>
+    </nav>
+
+    <!-- 课程编号 + 标题 -->
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🔌</span>
+      <span>LESSON 23 · 专题篇</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      工具能力扩展<br/>
+      <span class="gradient-text">MCP + 技能 + 生态</span>
+    </h1>
+
+    <!-- 元数据 -->
+    <div class="lesson-meta">
+      <span class="tag tag-purple">专题篇 · 深度进阶</span>
+      <span class="tag tag-orange">⏱ 建议 120 分钟</span>
+      <span class="tag tag-red">⭐⭐⭐⭐⭐ 难度极高</span>
+      <span class="tag tag-blue">MCP · 技能系统 · 插件架构</span>
+    </div>
+
+    <!-- 学习目标 -->
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>解释 MCP（Model Context Protocol）的设计哲学与六种传输类型的适用场景</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>描述 <code>connectToServer</code> 的连接生命周期管理与自动重连机制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>分析技能系统的"五路加载"架构（managed / user / project / additional / bundled）</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>理解 <code>SkillTool</code> 的双执行模式（inline vs. forked）与 MCP skills 集成</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>说明插件系统的分层设计：Built-in Plugin vs. Bundled Skill 的区别与选择</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     主体布局：侧边栏 + 内容
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <!-- ── 侧边栏目录 ────────────────────── -->
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-mcp">1.1 什么是 MCP</a></div>
+        <div class="toc-item sub"><a href="#concept-skill">1.2 什么是技能</a></div>
+        <div class="toc-item sub"><a href="#concept-plugin">1.3 什么是插件</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-layers">2.1 工具能力分层架构</a></div>
+        <div class="toc-item sub"><a href="#arch-lifecycle">2.2 MCP 连接生命周期</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-types">3.1 mcp/types.ts Transport 联合类型</a></div>
+        <div class="toc-item sub"><a href="#code-client">3.2 mcp/client.ts connectToServer</a></div>
+        <div class="toc-item sub"><a href="#code-inprocess">3.3 InProcessTransport 进程内管道</a></div>
+        <div class="toc-item sub"><a href="#code-skills-load">3.4 loadSkillsDir.ts 五路并行加载</a></div>
+        <div class="toc-item sub"><a href="#code-bundled">3.5 bundledSkills.ts 安全文件提取</a></div>
+        <div class="toc-item sub"><a href="#code-plugins">3.6 builtinPlugins.ts 插件注册表</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 工具能力的分层架构</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题</a></div>
+      </nav>
+    </aside>
+
+    <!-- ── 主内容区 ────────────────────────────────── -->
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- ══════════════════════════════════════
+           §1 核心概念
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <!-- 1.1 什么是 MCP -->
+        <div id="concept-mcp" class="reveal">
+          <h3 class="content-h3">1.1 什么是 MCP</h3>
+          <p class="content-p">
+            MCP（Model Context Protocol）是 Anthropic 提出的<strong>开放协议</strong>，让外部服务以标准化的方式向 AI 模型暴露能力（工具/资源/提示词）。类比：如果 AI 是一个"大脑"，MCP 就是连接外部世界的标准接口，就像 USB-C 统一了各种外设的连接方式。
+          </p>
+          <p class="content-p">
+            Claude Code 作为 MCP <strong>客户端</strong>，可以连接任意符合协议的 MCP <strong>服务端</strong>，动态获取服务端提供的工具并注册到工具池里，模型随时可调用。
+          </p>
+
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>传输类型</th>
+                <th>适用场景</th>
+                <th>典型用途</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>stdio</code></td>
+                <td>本地子进程</td>
+                <td>大多数本地 MCP 服务器</td>
+              </tr>
+              <tr>
+                <td><code>sse</code></td>
+                <td>远程 HTTP 流（旧）</td>
+                <td>带 OAuth 认证的远程服务</td>
+              </tr>
+              <tr>
+                <td><code>http</code></td>
+                <td>远程 Streamable HTTP（新）</td>
+                <td>现代远程服务（支持 OAuth + 代理）</td>
+              </tr>
+              <tr>
+                <td><code>ws</code></td>
+                <td>WebSocket</td>
+                <td>需要双向通信的场景</td>
+              </tr>
+              <tr>
+                <td><code>sse-ide</code> / <code>ws-ide</code></td>
+                <td>IDE 扩展专用</td>
+                <td>VS Code / JetBrains 插件通信</td>
+              </tr>
+              <tr>
+                <td><code>sdk</code></td>
+                <td>进程内</td>
+                <td>SDK 控制的内嵌服务器</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 1.2 什么是技能 -->
+        <div id="concept-skill" class="reveal">
+          <h3 class="content-h3">1.2 什么是技能（Skill）</h3>
+          <p class="content-p">
+            技能是 Claude Code 里"可调用的 Markdown 脚本"——本质是一个带 frontmatter 的 <code>.md</code> 文件，定义了 <code>name</code>、<code>description</code>、<code>whenToUse</code> 等元数据，以及技能执行时注入给模型的提示词内容。
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">目录结构 · 技能文件</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-text">.claude/skills/
+└── commit/
+    └── SKILL.md      ← 技能文件</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md);"><strong>技能的五条加载路径</strong>：</p>
+
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>路径</th>
+                <th>来源</th>
+                <th>优先级</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Managed（企业策略）</td>
+                <td><code>getManagedFilePath()/.claude/skills/</code></td>
+                <td><span class="tag tag-red">最高（可锁定）</span></td>
+              </tr>
+              <tr>
+                <td>User（用户级）</td>
+                <td><code>~/.claude/skills/</code></td>
+                <td><span class="tag tag-orange">高</span></td>
+              </tr>
+              <tr>
+                <td>Project（项目级）</td>
+                <td><code>.claude/skills/</code>（从项目根到 HOME 逐级向上）</td>
+                <td><span class="tag tag-blue">中</span></td>
+              </tr>
+              <tr>
+                <td>Additional（<code>--add-dir</code>）</td>
+                <td><code>{dir}/.claude/skills/</code></td>
+                <td><span class="tag tag-blue">中</span></td>
+              </tr>
+              <tr>
+                <td>Legacy commands</td>
+                <td><code>.claude/commands/</code></td>
+                <td><span class="tag tag-green">低（向后兼容）</span></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-info">
+            <div class="callout-title"><span>ℹ️</span> 特殊路径</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              还有两条特殊路径：<strong>Bundled</strong>（编译进二进制）和 <strong>MCP skills</strong>（从 MCP 服务器的 <code>skill://</code> 资源动态发现）。
+            </p>
+          </div>
+        </div>
+
+        <!-- 1.3 什么是插件 -->
+        <div id="concept-plugin" class="reveal">
+          <h3 class="content-h3">1.3 什么是插件（Plugin）</h3>
+          <p class="content-p">
+            插件是可以被用户启用/禁用的<strong>能力包</strong>，可以包含技能、Hooks、MCP 服务器配置。
+          </p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-family: var(--font-code); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-blue); margin-bottom: var(--space-sm);">Built-in Plugin</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">随 CLI 发布</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">用户可在 <code>/plugin</code> 界面开关，ID 格式为 <code>name@builtin</code></div>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-purple);">
+              <div style="font-family: var(--font-code); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-purple); margin-bottom: var(--space-sm);">Marketplace Plugin</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">从外部市场安装</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">ID 格式为 <code>name@marketplace</code></div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> Built-in Plugin vs. Bundled Skill 的区别</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              Bundled Skill 是"硬编码进去、永远存在"；Built-in Plugin 是"随包发布、但用户可以关掉"。两个机制并存不是冗余，而是"复杂度匹配"：简单能力用简单机制，复杂能力用复杂机制。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §2 架构设计
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计</h2>
+        </div>
+
+        <!-- 2.1 工具能力分层架构 -->
+        <div id="arch-layers" class="reveal">
+          <h3 class="content-h3">2.1 工具能力分层架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "内置工具层（编译时确定）"
+        BT["BashTool / FileReadTool<br/>GlobTool / GrepTool..."]
+        ST["SkillTool<br/>技能调度器"]
+    end
+    subgraph "技能层（运行时发现）"
+        MS["Managed Skills<br/>企业策略目录"]
+        US["User Skills<br/>~/.claude/skills/"]
+        PS["Project Skills<br/>.claude/skills/"]
+        BS["Bundled Skills<br/>内置技能"]
+        MCPS["MCP Skills<br/>skill:// 资源"]
+    end
+    subgraph "MCP 工具层（连接时动态注册）"
+        SC["connectToServer()<br/>连接管理器"]
+        FT["fetchToolsForClient()<br/>工具发现（LRU 缓存）"]
+        MT["MCPTool<br/>动态代理工具"]
+    end
+    subgraph "插件层（用户可控）"
+        BP["Built-in Plugins<br/>builtinPlugins.ts"]
+        MP["Marketplace Plugins<br/>外部安装"]
+    end
+    subgraph "外部服务"
+        STDIO["stdio 子进程<br/>本地 MCP 服务器"]
+        SSE["SSE/HTTP<br/>远程 MCP 服务器"]
+        IDE["SSE-IDE/WS-IDE<br/>IDE 扩展"]
+        INPROC["In-Process<br/>Chrome/ComputerUse"]
+    end
+
+    ST --> MS & US & PS & BS & MCPS
+    SC --> FT
+    FT --> MT
+    SC --> STDIO & SSE & IDE & INPROC
+    BP --> BS
+    MP --> MCPS
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 MCP 连接生命周期 -->
+        <div id="arch-lifecycle" class="reveal">
+          <h3 class="content-h3">2.2 MCP 连接生命周期</h3>
+          <p class="content-p">
+            MCP 连接不是"调用时建立，调用完断开"，而是<strong>持久连接</strong>。一旦服务器连接成功，连接对象被 <code>memoize</code> 缓存，后续调用直接复用。只有服务器主动断开（<code>onclose</code>）或出错到达阈值（<code>MAX_ERRORS_BEFORE_RECONNECT = 3</code>）时，缓存才会清除，触发重连。
+          </p>
+
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>⚡</span> 低延迟设计</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              这个设计让 MCP 工具调用的延迟接近本地函数调用——不需要每次建立 TCP 握手、TLS 协商、MCP 协议握手。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §3 关键源码深度走查
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+          <p class="content-p">以下六段代码是理解工具能力扩展体系的核心切入点，逐段拆解其设计意图。</p>
+        </div>
+
+        <!-- 3.1 mcp/types.ts -->
+        <div id="code-types" class="reveal">
+          <h3 class="content-h3">3.1 services/mcp/types.ts：Transport 联合类型的接口设计</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/services/mcp/types.ts</code> 第 23-161 行（精选）
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/services/mcp/types.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// ① 传输类型联合：六种传输的完整枚举
+export const TransportSchema = lazySchema(() =>
+  z.enum(['stdio', 'sse', 'sse-ide', 'http', 'ws', 'sdk']),
+)
+export type Transport = z.infer&lt;ReturnType&lt;typeof TransportSchema&gt;&gt;
+
+// ② 每种传输有独立的 config schema，字段各不相同
+export const McpStdioServerConfigSchema = lazySchema(() =>
+  z.object({
+    type: z.literal('stdio').optional(),  // 向后兼容：无 type 字段默认是 stdio
+    command: z.string().min(1, 'Command cannot be empty'),
+    args: z.array(z.string()).default([]),
+    env: z.record(z.string(), z.string()).optional(),
+  }),
+)
+
+export const McpHTTPServerConfigSchema = lazySchema(() =>
+  z.object({
+    type: z.literal('http'),
+    url: z.string(),
+    headers: z.record(z.string(), z.string()).optional(),
+    oauth: McpOAuthConfigSchema().optional(),  // ③ HTTP 支持 OAuth
+  }),
+)
+
+// ④ 服务器连接状态：五种可能状态（ADT 设计）
+export type MCPServerConnection =
+  | ConnectedMCPServer   // 连接成功
+  | FailedMCPServer      // 连接失败（附错误信息）
+  | NeedsAuthMCPServer   // 需要认证（OAuth 未完成）
+  | PendingMCPServer     // 连接中（附重试次数）
+  | DisabledMCPServer    // 用户手动禁用
+
+// ⑤ 工具序列化格式：跨进程传递工具定义
+export interface SerializedTool {
+  name: string
+  description: string
+  inputJSONSchema?: { type: 'object'; properties?: { [x: string]: unknown } }
+  isMcp?: boolean
+  originalToolName?: string  // ⑥ 工具名规范化前的原始名称
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ① 传输类型是枚举而不是字符串，配合 <code>lazySchema</code> 延迟构造——Zod schema 只在第一次访问时初始化，避免模块加载时的循环依赖和性能损耗。
+          </p>
+          <p class="content-p">
+            ④ 连接状态是<strong>代数数据类型（ADT）</strong>设计：每种状态携带该状态特有的数据（<code>FailedMCPServer</code> 有 <code>error</code> 字段，<code>PendingMCPServer</code> 有 <code>reconnectAttempt</code>），而不是一个大对象挂各种可选字段。
+          </p>
+          <p class="content-p">
+            ⑥ <code>originalToolName</code> 存储工具名规范化前的原始值。MCP 工具名可能包含 <code>/</code>、<code>.</code> 等在 JSON schema 里不合法的字符，规范化时会被替换；但调用时需要用原始名发给 MCP 服务器。这个字段保持了双向翻译的能力。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — ADT 连接状态 vs. 大对象 + 可选字段</strong></p>
+            <p><strong>好在哪里</strong>：当你写 <code>if (conn.type === 'failed')</code> 时，TypeScript 知道 <code>conn.error</code> 一定存在，因为 <code>FailedMCPServer</code> 类型上有 <code>error: string</code>。你不需要写 <code>conn.error!</code> 或者 <code>conn.error ?? ''</code>——类型系统保证了数据的完整性。</p>
+            <p><strong>如果不这样做</strong>：一个 <code>MCPServerConnection</code> 对象挂着 <code>status?: string</code>、<code>error?: string</code>、<code>reconnectAttempt?: number</code>——每个消费者都要手动判断"这个字段在这个 status 下是否有意义"，遗漏一处就是运行时 bug。ADT 让"无效状态不可表示"，这是类型驱动设计的核心理念。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.2 mcp/client.ts -->
+        <div id="code-client" class="reveal">
+          <h3 class="content-h3">3.2 services/mcp/client.ts：connectToServer 的连接管理器</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/services/mcp/client.ts</code> 第 595-641 行（精选）
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/services/mcp/client.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// ① memoize：相同 (name, config) 参数只连接一次，后续调用复用缓存
+export const connectToServer = memoize(
+  async (
+    name: string,
+    serverRef: ScopedMcpServerConfig,
+  ): Promise&lt;MCPServerConnection&gt; => {
+    let transport
+
+    // ② 根据 type 字段选择对应的传输实现
+    if (serverRef.type === 'sse') {
+      const authProvider = new ClaudeAuthProvider(name, serverRef)
+      transport = new SSEClientTransport(new URL(serverRef.url), {
+        authProvider,
+        // ③ 双层 fetch 包装：超时控制 + 403 Step-Up 检测
+        fetch: wrapFetchWithTimeout(
+          wrapFetchWithStepUpDetection(createFetchWithInit(), authProvider),
+        ),
+      })
+    } else if (serverRef.type === 'http') {
+      transport = new StreamableHTTPClientTransport(...)
+    } else if (isClaudeInChromeMCPServer(name)) {
+      // ④ 特殊：Chrome MCP 不启动子进程，用进程内传输
+      const [clientTransport, serverTransport] = createLinkedTransportPair()
+      inProcessServer = createClaudeForChromeMcpServer(context)
+      await inProcessServer.connect(serverTransport)
+      transport = clientTransport
+    } else {
+      // ⑤ stdio：启动子进程，用 stdin/stdout 通信
+      transport = new StdioClientTransport({
+        command: serverRef.command,
+        args: serverRef.args,
+        env: { ...subprocessEnv(), ...serverRef.env },
+        stderr: 'pipe',  // ⑥ 截获 stderr，防止污染 UI
+      })
+    }
+
+    const client = new Client({ name: 'claude-code' }, { capabilities: {} })
+    await Promise.race([client.connect(transport), timeoutPromise])
+
+    // ⑧ onclose 钩子：断开时清空缓存，触发重连
+    client.onclose = () => {
+      fetchToolsForClient.cache.delete(name)
+      connectToServer.cache.delete(getServerCacheKey(name, serverRef))
+    }
+
+    // ⑨ onerror：连续 3 次终态错误后主动关闭
+    client.onerror = (error) => {
+      if (isTerminalConnectionError(error.message)) {
+        consecutiveConnectionErrors++
+        if (consecutiveConnectionErrors >= MAX_ERRORS_BEFORE_RECONNECT) {
+          closeTransportAndRejectPending('max consecutive terminal errors')
+        }
+      }
+    }
+
+    return { name, client, type: 'connected', capabilities, cleanup }
+  },
+  getServerCacheKey,  // ⑩ 缓存 key：name + 序列化 config
+)</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ③ <code>wrapFetchWithTimeout(wrapFetchWithStepUpDetection(...))</code> 是两层装饰器。外层超时包装（60 秒）作用于每个 POST 请求；内层 Step-Up 检测处理 HTTP 403 的 OAuth 升级流程。两件事各管各的，通过组合实现。
+          </p>
+          <p class="content-p">
+            ⑥ <code>stderr: 'pipe'</code> 截获子进程的 stderr——MCP 服务器启动时可能有 debug 日志输出到 stderr，如果不截获会直接打印到 CLI 的 UI 里，破坏用户体验。截获后存到 <code>stderrOutput</code>，只在连接失败时作为错误信息输出。
+          </p>
+          <p class="content-p">
+            ⑧⑨ <code>onclose</code> + <code>onerror</code> 的组合实现了<strong>自愈重连</strong>：断开时清空 memoize 缓存，下一次工具调用会触发重新 <code>connectToServer</code>，自动建立新连接。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — memoize 缓存 + onclose 清缓存 = 惰性自愈</strong></p>
+            <p><strong>好在哪里</strong>：正常情况下 <code>connectToServer</code> 只跑一次，之后所有工具调用都复用缓存的连接对象——零开销。断线了？缓存自动清空，下次工具调用时 memoize 发现缓存 miss，自动重连——不需要任何 health check 轮询，也不需要 reconnect 定时器。</p>
+            <p><strong>如果不这样做</strong>：要么每次工具调用都重新建立连接（慢），要么用定时器 keep-alive 检测（浪费资源，且检测周期内的调用仍然会失败），要么手动实现连接池（复杂）。memoize + onclose 清缓存用一个优雅的机制代替了这三种方案。就像水龙头——平时关着，用时打开，断水了等水来就行，不需要雇人一直站在那监测。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.3 InProcessTransport.ts -->
+        <div id="code-inprocess" class="reveal">
+          <h3 class="content-h3">3.3 services/mcp/InProcessTransport.ts：进程内双向管道</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/services/mcp/InProcessTransport.ts</code> 第 1-63 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/services/mcp/InProcessTransport.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">class InProcessTransport implements Transport {
+  private peer: InProcessTransport | undefined
+  private closed = false
+
+  onclose?: () => void
+  onerror?: (error: Error) => void
+  onmessage?: (message: JSONRPCMessage) => void
+
+  async send(message: JSONRPCMessage): Promise&lt;void&gt; {
+    if (this.closed) throw new Error('Transport is closed')
+    // ① 异步投递：避免同步调用栈溢出
+    queueMicrotask(() => {
+      this.peer?.onmessage?.(message)
+    })
+  }
+
+  async close(): Promise&lt;void&gt; {
+    if (this.closed) return
+    this.closed = true
+    this.onclose?.()
+    // ② 级联关闭：关一侧，另一侧也关
+    if (this.peer && !this.peer.closed) {
+      this.peer.closed = true
+      this.peer.onclose?.()
+    }
+  }
+}
+
+// 工厂函数：创建一对互联的传输实例
+export function createLinkedTransportPair(): [Transport, Transport] {
+  const a = new InProcessTransport()
+  const b = new InProcessTransport()
+  a._setPeer(b)  // a.send → b.onmessage
+  b._setPeer(a)  // b.send → a.onmessage
+  return [a, b]  // [clientTransport, serverTransport]
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ① <code>queueMicrotask</code> 是这个实现里最关键的细节。如果用同步的 <code>this.peer.onmessage(message)</code> 投递消息，当 Client 发请求、Server 处理并立刻回复时，调用栈会是：<code>client.send → server.onmessage → server.send → client.onmessage → ...</code>——这是深度递归，容易栈溢出。<code>queueMicrotask</code> 把消息投递延迟到当前调用栈清空后，打破了同步递归链。
+          </p>
+          <p class="content-p">
+            ② 级联关闭保证了"两侧同步关闭"——关掉 Client 传输时，Server 传输也会收到 <code>onclose</code> 回调，不会出现"一侧已关，另一侧还在等待消息"的不一致状态。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — queueMicrotask 打破同步递归</strong></p>
+            <p><strong>好在哪里</strong>：MCP 的请求-响应模式是同步的在协议层面上——发请求，等响应。但如果 Client 和 Server 在同一线程里，"等响应"必须异步，不然会锁死。<code>queueMicrotask</code> 把消息投递扔进微任务队列，让当前调用栈先退出，事件循环再处理消息——完美模拟了"网络延迟"这个异步边界，但实际是零延迟。</p>
+            <p>这就像传纸条：你写完纸条（send）不直接插嘴，而是等对方说完当前这句话（调用栈清空），再把纸条传过去（queueMicrotask 触发 onmessage）。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.4 loadSkillsDir.ts -->
+        <div id="code-skills-load" class="reveal">
+          <h3 class="content-h3">3.4 skills/loadSkillsDir.ts：五路并行加载与去重</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/skills/loadSkillsDir.ts</code> 第 638-770 行（精选）
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/skills/loadSkillsDir.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export const getSkillDirCommands = memoize(
+  async (cwd: string): Promise&lt;Command[]&gt; => {
+    const userSkillsDir = join(getClaudeConfigHomeDir(), 'skills')
+    const managedSkillsDir = join(getManagedFilePath(), '.claude', 'skills')
+    const projectSkillsDirs = getProjectDirsUpToHome('skills', cwd)  // ① 从项目根向上遍历到 HOME
+
+    const skillsLocked = isRestrictedToPluginOnly('skills')  // ② 企业策略锁定
+
+    // ③ 五路并行加载（都是磁盘读取，互相独立，并行最优）
+    const [
+      managedSkills,
+      userSkills,
+      projectSkillsNested,
+      additionalSkillsNested,
+      legacyCommands,
+    ] = await Promise.all([
+      isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_POLICY_SKILLS)
+        ? Promise.resolve([])
+        : loadSkillsFromSkillsDir(managedSkillsDir, 'policySettings'),
+      isSettingSourceEnabled('userSettings') && !skillsLocked
+        ? loadSkillsFromSkillsDir(userSkillsDir, 'userSettings')
+        : Promise.resolve([]),
+      projectSettingsEnabled
+        ? Promise.all(projectSkillsDirs.map(dir =>
+            loadSkillsFromSkillsDir(dir, 'projectSettings')))
+        : Promise.resolve([]),
+      projectSettingsEnabled
+        ? Promise.all(additionalDirs.map(dir =>
+            loadSkillsFromSkillsDir(join(dir, '.claude', 'skills'), 'projectSettings')))
+        : Promise.resolve([]),
+      skillsLocked ? Promise.resolve([]) : loadSkillsFromCommandsDir(cwd),
+    ])
+
+    // ④ 合并所有来源
+    const allSkillsWithPaths = [
+      ...managedSkills, ...userSkills,
+      ...projectSkillsNested.flat(), ...additionalSkillsNested.flat(),
+      ...legacyCommands,
+    ]
+
+    // ⑤ 去重：通过 realpath 解析符号链接，防止同一文件被多路径加载两次
+    const fileIds = await Promise.all(
+      allSkillsWithPaths.map(({ filePath }) => getFileIdentity(filePath)),
+    )
+    const seenFileIds = new Map()
+    const deduplicatedSkills: Command[] = []
+
+    for (let i = 0; i &lt; allSkillsWithPaths.length; i++) {
+      const fileId = fileIds[i]
+      if (seenFileIds.has(fileId)) continue
+      seenFileIds.set(fileId, skill.source)
+      deduplicatedSkills.push(skill)
+    }
+  }
+)</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ① <code>getProjectDirsUpToHome('skills', cwd)</code> 从当前工作目录开始，<strong>逐级向上</strong>查找 <code>.claude/skills/</code> 目录，直到 HOME 目录为止。这意味着在嵌套的 monorepo 里，<code>packages/backend/.claude/skills/</code> 和根目录的 <code>.claude/skills/</code> 都会被发现。
+          </p>
+          <p class="content-p">
+            ② <code>isRestrictedToPluginOnly('skills')</code> 是企业策略控制——当 MDM 或策略配置设置了"只允许通过插件加载技能"时，这个函数返回 <code>true</code>，所有自定义技能目录加载都被跳过。这是"企业合规优先于用户便利"的体现。
+          </p>
+          <p class="content-p">
+            ⑤ 去重用 <code>realpath</code> 解析符号链接——因为某些文件系统（如挂载的 NFS、ExFAT 分区）的 inode 不可靠（可能全是 0）。用 <code>realpath</code> 解析出真实路径后比较，避免了"同一个 SKILL.md 被软链接从两个路径加载，注册了两个同名技能"的问题。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — 五路并行加载的架构决策</strong></p>
+            <p><strong>好在哪里</strong>：五条加载路径是完全独立的（不同目录，没有共享状态），用 <code>Promise.all</code> 并行加载，比串行快 5 倍左右。对 CLI 工具来说，启动时的技能加载是关键路径——用户发出命令后，等技能加载完才能用——并行化直接缩短了这个等待时间。</p>
+            <p><strong>如果不这样做</strong>：串行加载五个目录，每个目录 10ms，五个就是 50ms。对一个反复使用的 CLI 工具，这 50ms 每次都要付出。就像早上准备出门：你可以先烧水，烧水的时候同时刷牙、准备包，不需要先烧完水再刷牙。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.5 bundledSkills.ts -->
+        <div id="code-bundled" class="reveal">
+          <h3 class="content-h3">3.5 skills/bundledSkills.ts：内置技能的安全文件提取</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/skills/bundledSkills.ts</code> 第 53-206 行（精选）
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/skills/bundledSkills.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function registerBundledSkill(definition: BundledSkillDefinition): void {
+  const { files } = definition
+
+  // ① 如果技能携带参考文件，设置惰性提取
+  if (files && Object.keys(files).length > 0) {
+    let extractionPromise: Promise&lt;string | null&gt; | undefined
+    const inner = definition.getPromptForCommand
+    getPromptForCommand = async (args, ctx) => {
+      // ② 只提取一次：并发调用共享同一个 Promise
+      extractionPromise ??= extractBundledSkillFiles(definition.name, files)
+      const extractedDir = await extractionPromise
+      return prependBaseDir(await inner(args, ctx), extractedDir)
+    }
+  }
+}
+
+// ③ 安全文件写入：多层防御
+// 进程内 nonce（随机路径）= 第一层防御，攻击者猜不到路径
+// O_CREAT | O_EXCL | O_NOFOLLOW = 第二层防御，不跟随符号链接
+// 0o600 权限 = 第三层防御，只有进程所有者可读
+const SAFE_WRITE_FLAGS =
+  process.platform === 'win32'
+    ? 'wx'  // Windows 等价标志
+    : fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | O_NOFOLLOW
+
+async function safeWriteFile(p: string, content: string): Promise&lt;void&gt; {
+  const fh = await open(p, SAFE_WRITE_FLAGS, 0o600)
+  try {
+    await fh.writeFile(content, 'utf8')
+  } finally {
+    await fh.close()
+  }
+}
+
+// ④ 路径遍历防御：拒绝 '..'、绝对路径
+function resolveSkillFilePath(baseDir: string, relPath: string): string {
+  const normalized = normalize(relPath)
+  if (
+    isAbsolute(normalized) ||
+    normalized.split(pathSep).includes('..') ||
+    normalized.split('/').includes('..')
+  ) {
+    throw new Error(`bundled skill file path escapes skill dir: ${relPath}`)
+  }
+  return join(baseDir, normalized)
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ② <code>extractionPromise ??= extractBundledSkillFiles(...)</code> 是<strong>Promise 级别的 memoize</strong>——不是缓存结果，而是缓存 Promise 本身。如果两个并发调用同时触发技能的首次使用，第一个调用创建 Promise，第二个调用找到已有的 Promise，两者等待同一个结果，不会产生两次文件写入竞争。
+          </p>
+          <p class="content-p">
+            ③ 安全写入用了三层防御：随机路径（进程内 nonce 防预测）+ <code>O_EXCL</code>（防 TOCTOU 竞争）+ <code>O_NOFOLLOW</code>（防最终路径组件的符号链接）+ <code>0o600</code>（防其他用户读取）。
+          </p>
+          <p class="content-p">
+            ④ 路径遍历防御必须检查两种格式的 <code>..</code>：系统路径分隔符（Windows <code>\</code>）和 URL 风格的 <code>/</code>——因为 <code>normalize()</code> 在不同系统上行为不同，要用两种分隔符分割后都检查。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — 三层文件安全防御的必要性</strong></p>
+            <p><strong>好在哪里</strong>：Bundled skills 的文件提取到用户临时目录，这个操作涉及"写文件到用户可控路径"——这是一个经典的安全敏感操作。三层防御（随机路径 + O_EXCL + O_NOFOLLOW）分别对付三种攻击：预测路径攻击（随机 nonce 防）、TOCTOU 竞争（O_EXCL 防）、符号链接劫持（O_NOFOLLOW 防）。每层单独都不够，组合起来才能覆盖所有已知攻击向量。</p>
+            <p><strong>如果不这样做</strong>：只用普通的 <code>writeFile(path, content)</code>，攻击者可以在你写文件前预创建一个指向 <code>/etc/crontab</code> 的符号链接，你的技能文件内容就写进了系统配置文件。安全防御的成本是几行额外代码，收益是避免了一类整类的攻击向量。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.6 builtinPlugins.ts -->
+        <div id="code-plugins" class="reveal">
+          <h3 class="content-h3">3.6 plugins/builtinPlugins.ts：内置插件注册表</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/plugins/builtinPlugins.ts</code> 第 21-102 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/plugins/builtinPlugins.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">const BUILTIN_PLUGINS: Map&lt;string, BuiltinPluginDefinition&gt; = new Map()
+
+// ① 注册入口：启动时调用，把插件定义加入全局 Map
+export function registerBuiltinPlugin(definition: BuiltinPluginDefinition): void {
+  BUILTIN_PLUGINS.set(definition.name, definition)
+}
+
+// ② 状态查询：根据用户配置决定每个插件的启用状态
+export function getBuiltinPlugins(): { enabled: LoadedPlugin[]; disabled: LoadedPlugin[] } {
+  const settings = getSettings_DEPRECATED()
+
+  for (const [name, definition] of BUILTIN_PLUGINS) {
+    if (definition.isAvailable && !definition.isAvailable()) continue  // ③ 可用性检查
+
+    const pluginId = `${name}@builtin`
+    const userSetting = settings?.enabledPlugins?.[pluginId]
+    // ④ 优先级：用户设置 > 插件默认值 > true（默认启用）
+    const isEnabled = userSetting !== undefined
+      ? userSetting === true
+      : (definition.defaultEnabled ?? true)
+
+    const plugin: LoadedPlugin = {
+      name,
+      path: 'builtin',   // ⑤ 哨兵值：不是真实文件路径
+      source: pluginId,
+      enabled: isEnabled,
+      isBuiltin: true,
+      hooksConfig: definition.hooks,
+      mcpServers: definition.mcpServers,
+    }
+  }
+}
+
+// ⑥ 插件里的技能：转换为 Command 对象后进入技能系统
+export function getBuiltinPluginSkillCommands(): Command[] {
+  const { enabled } = getBuiltinPlugins()
+  const commands: Command[] = []
+  for (const plugin of enabled) {
+    const definition = BUILTIN_PLUGINS.get(plugin.name)
+    if (!definition?.skills) continue
+    for (const skill of definition.skills) {
+      commands.push(skillDefinitionToCommand(skill))
+    }
+  }
+  return commands
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ① 注册表用 <code>Map&lt;string, BuiltinPluginDefinition&gt;</code>，和工具注册表、任务注册表一样是"注册中心"模式——把定义和使用解耦。新增内置插件只需要调用 <code>registerBuiltinPlugin</code>，不需要修改核心调度逻辑。
+          </p>
+          <p class="content-p">
+            ③ <code>isAvailable()</code> 让插件能够根据运行时条件决定是否出现。比如 macOS 专属的 Computer Use 插件，在 Linux 上不应该出现在插件列表里，<code>isAvailable()</code> 返回 <code>false</code> 就直接跳过。
+          </p>
+          <p class="content-p">
+            ⑤ <code>path: 'builtin'</code> 是一个哨兵值。内置插件没有真实的文件系统路径，但 <code>LoadedPlugin</code> 类型要求有 <code>path</code> 字段。用 <code>'builtin'</code> 作为哨兵，既满足类型要求，又让消费代码能识别"这是内置的，不需要去文件系统找"。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — Built-in Plugin vs. Bundled Skill 的架构分层</strong></p>
+            <p><strong>好在哪里</strong>：如果你的技能只是"一段 Markdown 提示词"，用 Bundled Skill 就够了——<code>registerBundledSkill</code> 就是一行调用。但如果你的功能需要附带 MCP 服务器配置、Hooks 钩子、还要能让用户开关，那就该用 Built-in Plugin。两个机制并存不是冗余，而是"复杂度匹配"：简单能力用简单机制，复杂能力用复杂机制。就像用钉子挂画和用膨胀螺丝固定书柜——都是"固定东西"，但复杂度匹配任务重量。</p>
+          </blockquote>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §4 Harness Engineering
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <!-- 4.1 工具能力的分层架构 -->
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 Harness 视角：工具能力的分层架构</h3>
+          <p class="content-p">
+            Claude Code 的工具扩展能力体现了"Harness = 约束 + 赋能 + 编排"三位一体的架构哲学：
+          </p>
+
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th>机制</th>
+                <th>体现</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>约束</strong></td>
+                <td>MCP 工具通过 LRU 缓存进入工具池（size=20）</td>
+                <td>限制并发 MCP 连接数，防止工具池无限膨胀</td>
+              </tr>
+              <tr>
+                <td><strong>约束</strong></td>
+                <td><code>skillsLocked</code>（企业策略）</td>
+                <td>完全阻止自定义技能加载，实现合规管控</td>
+              </tr>
+              <tr>
+                <td><strong>赋能</strong></td>
+                <td>六种 MCP 传输类型</td>
+                <td>覆盖从本地进程到远程 OAuth 服务的所有接入方式</td>
+              </tr>
+              <tr>
+                <td><strong>赋能</strong></td>
+                <td>InProcessTransport</td>
+                <td>Chrome/Computer Use 等重量级服务器不需要子进程</td>
+              </tr>
+              <tr>
+                <td><strong>编排</strong></td>
+                <td>五路并行加载 + 去重</td>
+                <td>"能力发现"和"使用"解耦，启动延迟最小化</td>
+              </tr>
+              <tr>
+                <td><strong>编排</strong></td>
+                <td>memoize + onclose 自愈</td>
+                <td>连接管理对上层透明，惰性重连零成本</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 4.2 大模型应用启发 -->
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 启发 1：协议标准化是能力扩展的关键</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              MCP 的价值不在于它的具体实现，而在于它是一个<strong>开放标准</strong>——任何人都可以写一个 MCP 服务器，立刻让 Claude Code 获得新能力。<strong>实践建议</strong>：在你的 AI 应用里，把"能力扩展接口"设计成公开的、文档化的协议，而不是内部 API。
+            </p>
+          </div>
+
+          <div class="callout callout-info">
+            <div class="callout-title"><span>🗂️</span> 启发 2：多来源、有优先级的配置加载</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              技能的五路加载（managed > user > project > additional > legacy）是一个经典的"配置层叠"模式——低优先级是默认值，高优先级的配置覆盖它。<strong>实践建议</strong>：设计配置系统时，从一开始就规划好"谁的配置优先"：系统策略 > 用户设置 > 项目设置 > 默认值。
+            </p>
+          </div>
+
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>🔄</span> 启发 3：惰性连接 + memoize = 零成本持久连接</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <code>connectToServer</code> 的 memoize 实现了一个优雅的模式：<strong>第一次需要时才连接，连接后复用，断开后自动触发重连</strong>。<strong>实践建议</strong>：对于需要持久连接的外部服务，考虑用这种"memoize + 失效清除"模式，而不是手动维护连接池。
+            </p>
+          </div>
+
+          <div class="callout callout-idea">
+            <div class="callout-title"><span>🛡️</span> 启发 4：安全意识需要从设计开始</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              Bundled Skill 的文件提取有三层安全防御，不是事后加的 patch——这是从设计阶段就内置的安全考量。<strong>实践建议</strong>：每次你的 AI 系统要"写文件"、"执行命令"、"访问外部 URL"时，列出可能的攻击向量，并对应地设计防御。安全防御的成本在设计阶段是最低的。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §5 思考题
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题</h2>
+          <p class="content-p">点击展开参考答案，检验你的理解深度。</p>
+        </div>
+
+        <div class="reveal">
+          <details class="quiz-item">
+            <summary>题目 1：<code>MCPServerConnection</code> 为什么用 ADT（代数数据类型）设计，而不是一个带可选字段的大对象？这对 TypeScript 类型系统有什么好处？</summary>
+            <div class="quiz-answer">
+              <p>ADT 设计的核心优势是"无效状态不可表示（Making Invalid States Unrepresentable）"。以 <code>FailedMCPServer</code> 为例：只有失败状态才有 <code>error: string</code> 字段；<code>ConnectedMCPServer</code> 才有 <code>capabilities</code> 和 <code>cleanup</code> 字段。</p>
+              <p>如果用大对象 + 可选字段：<code>error?: string; capabilities?: ServerCapabilities</code>，TypeScript 无法保证"有 error 的一定是失败状态"——你可以构造一个 <code>{ type: 'connected', error: 'something' }</code> 的对象，这在逻辑上是矛盾的，但类型系统无法拦截。</p>
+              <p>使用 ADT + 判别联合（<code>type</code> 字段作为 discriminant），<code>if (conn.type === 'failed')</code> 之后，TypeScript 的控制流分析会把 <code>conn</code> 的类型收窄为 <code>FailedMCPServer</code>，自动知道 <code>conn.error</code> 一定存在。这让消费代码既安全又简洁，编译器替你做了"状态一致性检查"。</p>
+            </div>
+          </details>
+
+          <details class="quiz-item">
+            <summary>题目 2：为什么 <code>InProcessTransport.send</code> 用 <code>queueMicrotask</code> 而不是直接同步调用 <code>this.peer.onmessage(message)</code>？不用异步会有什么问题？</summary>
+            <div class="quiz-answer">
+              <p>MCP 协议是请求-响应模式：Client 发请求，等待 Server 处理，Server 返回响应。如果用同步调用：</p>
+              <p>1. Client 调用 <code>send(request)</code> → 直接调用 <code>server.onmessage(request)</code></p>
+              <p>2. Server 处理请求，调用 <code>send(response)</code> → 直接调用 <code>client.onmessage(response)</code></p>
+              <p>3. Client 的 <code>onmessage</code> 处理响应，可能再次 <code>send</code> 下一个请求 → ...</p>
+              <p>这形成了深度嵌套的同步调用栈：<code>send → onmessage → send → onmessage → ...</code>，如果请求-响应链条足够长，会导致<strong>调用栈溢出</strong>（<code>RangeError: Maximum call stack size exceeded</code>）。</p>
+              <p><code>queueMicrotask</code> 把消息投递推迟到当前调用栈完全展开之后，打破了同步递归链，每一个 send 都会在独立的、干净的调用栈环境里被处理。相当于把"同步调用"改成了"异步调度"，但延迟几乎为零（microtask queue 比 setTimeout 快得多）。</p>
+            </div>
+          </details>
+
+          <details class="quiz-item">
+            <summary>题目 3：技能的五路加载用 <code>realpath</code> 去重，而不是比较文件名字符串。什么情况下同一个文件会有两个不同的路径？</summary>
+            <div class="quiz-answer">
+              <p>有几种常见情况：</p>
+              <p><strong>符号链接</strong>：<code>.claude/skills</code> 可能是一个指向 <code>../../shared/skills</code> 的软链接。从 <code>projectA/.claude/skills/commit/SKILL.md</code> 和直接路径 <code>shared/skills/commit/SKILL.md</code> 访问的是同一个文件，但字符串不同。</p>
+              <p><strong><code>--add-dir</code> 与项目目录重叠</strong>：用户用 <code>--add-dir /path/to/project</code> 指定了一个额外目录，而这个目录恰好就是当前工作目录，技能被两条路径分别发现一次。</p>
+              <p><strong>monorepo 中的嵌套父目录</strong>：<code>getProjectDirsUpToHome</code> 逐级向上扫描，<code>packages/backend/.claude/skills/</code> 和 <code>.claude/skills/</code>（项目根）会被分别加载。如果两个目录里有同名技能（甚至是同一个 symlink 指向的文件），字符串不同但 realpath 相同。</p>
+              <p>注释里提到为什么不用 inode：某些文件系统（NFS、ExFAT）的 inode 不可靠，可能全部返回 0，导致所有文件都被认为是"同一个文件"。</p>
+            </div>
+          </details>
+
+          <details class="quiz-item">
+            <summary>题目 4：MCP 连接断开后为什么要同时清空 <code>fetchToolsForClient.cache</code>，而不只清空 <code>connectToServer.cache</code>？</summary>
+            <div class="quiz-answer">
+              <p><code>connectToServer</code> 的缓存 key 是 <code>name + config</code> 的组合；<code>fetchToolsForClient</code> 的缓存 key 是服务器名（<code>name</code>）。</p>
+              <p>当连接断开、重连后，<code>connectToServer</code> 会返回一个<strong>新的 Client 对象</strong>（旧的已关闭）。但 <code>fetchToolsForClient</code> 缓存的是基于<strong>旧 Client 对象</strong>调用 <code>client.listTools()</code> 的结果——如果只清空 <code>connectToServer</code> 的缓存，下次 <code>fetchToolsForClient</code> 仍会返回旧的工具列表（缓存 hit），不会基于新 Client 重新查询。</p>
+              <p>实际上，MCP 服务器重连后可能工具列表发生了变化（服务器升级、配置变更），或者新 Client 对象和旧对象的 <code>listTools()</code> 结果格式不兼容。清空两份缓存确保了重连后使用全新的连接和全新的工具发现，避免了"新连接用旧工具列表"的不一致状态。</p>
+            </div>
+          </details>
+        </div>
+
+        <!-- 参考源码 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="callout callout-info">
+            <div class="callout-title"><span>📚</span> 参考源码</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              <code>src/services/mcp/types.ts</code>、<code>src/services/mcp/client.ts</code>、<code>src/services/mcp/InProcessTransport.ts</code>、<code>src/skills/loadSkillsDir.ts</code>、<code>src/skills/bundledSkills.ts</code>、<code>src/plugins/builtinPlugins.ts</code>、<code>src/tools/SkillTool/SkillTool.ts</code>
+            </p>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">
+              📌 本课小结
+            </h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">
+              Claude Code 的工具能力扩展体系是一个"标准化 + 分层 + 安全"的完整设计：
+            </p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>MCP 标准协议</strong>：六种传输类型覆盖全场景，开放生态</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>惰性自愈连接</strong>：memoize + onclose 零成本持久连接</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>五路并行加载</strong>：技能发现高效，去重精准（realpath）</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>三层安全防御</strong>：文件提取防预测/TOCTOU/符号链接攻击</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           课程导航页脚
+      ══════════════════════════════════════ -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="22.html" class="nav-prev">
+          ← 上一课：长程任务与多智能体协作
+        </a>
+
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+        <span class="nav-next" style="opacity: 0.4; pointer-events: none; cursor: default;">
+          下一课：即将推出 →
+        </span>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     页脚
+═══════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="22.html">← 上一课</a>
+      </nav>
+
+      <p class="footer-copy">
+        第23课 · 工具能力扩展（MCP + 技能 + 生态）· © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<!-- 公共 JS -->
+<script src="../js/main.js"></script>
+
+<!-- 目录高亮 scrollspy -->
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

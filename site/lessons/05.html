@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第05课：工具系统架构与生命周期 | Claude Code 教程</title>
+  <meta name="description" content="深入理解 Tool 接口完整生命周期钩子设计、工具装配全链路、buildTool 构造器与 TOOL_DEFAULTS 失败安全默认值策略。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-md); }
+    .code-anno-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .code-anno-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.6; }
+    .code-anno-table td:first-child { font-family: var(--font-code); font-size: 12px; color: var(--accent-orange); white-space: nowrap; min-width: 60px; }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-blue">第二阶段 · 核心系统深度解析</span>
+      <span class="sep">/</span>
+      <span>第05课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🔧</span>
+      <span>LESSON 05 · PHASE 02</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      工具系统架构<br/>
+      <span class="gradient-text">与生命周期</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-blue">第二阶段 · 核心系统深度解析</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐ 中级</span>
+      <span class="tag tag-green">Tool 接口 · 装配链路 · 权限系统</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item"><span class="goal-num">01</span><span>深入理解 <code>Tool</code> 接口的完整生命周期钩子设计（validateInput / checkPermissions / call / render*）</span></div>
+      <div class="goal-item"><span class="goal-num">02</span><span>掌握工具装配的全链路：<code>getAllBaseTools → filterToolsByDenyRules → getTools → assembleToolPool</code></span></div>
+      <div class="goal-item"><span class="goal-num">03</span><span>理解 <code>buildTool</code> 构造器与 <code>TOOL_DEFAULTS</code> 的"失败安全"默认值策略</span></div>
+      <div class="goal-item"><span class="goal-num">04</span><span>了解 8+ 内置工具的分类职责及其在工具池中的优先级规则</span></div>
+      <div class="goal-item"><span class="goal-num">05</span><span>掌握权限规则的多源解析机制与 <code>ToolPermissionContext</code> 的设计意图</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-tool-interface">1.1 Tool 接口本质</a></div>
+        <div class="toc-item sub"><a href="#concept-safety-matrix">1.2 安全属性矩阵</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 工具系统架构图</a></div>
+        <div class="toc-item sub"><a href="#arch-design">2.2 设计思想</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码走查</a></div>
+        <div class="toc-item sub"><a href="#code-tool-interface">3.1 Tool 接口核心方法</a></div>
+        <div class="toc-item sub"><a href="#code-build-tool">3.2 buildTool 与 TOOL_DEFAULTS</a></div>
+        <div class="toc-item sub"><a href="#code-assembly">3.3 工具注册与装配</a></div>
+        <div class="toc-item sub"><a href="#code-permission">3.4 ToolPermissionContext</a></div>
+        <div class="toc-item sub"><a href="#code-render">3.5 UI 渲染钩子体系</a></div>
+        <div class="toc-item"><a href="#tool-categories">§4 内置工具分类</a></div>
+        <div class="toc-item"><a href="#harness">§5 Harness Engineering</a></div>
+        <div class="toc-item"><a href="#quiz">§6 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-tool-interface" class="reveal">
+          <h3 class="content-h3">1.1 Tool 接口的本质</h3>
+          <p class="content-p">
+            Claude Code 的工具系统建立在一个统一的 <code>Tool</code> TypeScript 接口上。每个工具（BashTool、FileReadTool 等）都是这个接口的实现，包含：
+          </p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">📋</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">元数据</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">名称、别名、搜索提示（searchHint）</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">⚙️</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">生命周期方法</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">验证 → 权限 → 执行 → 渲染</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🛡️</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">安全属性</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">只读标记、破坏性标记、并发安全标记</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🎨</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">UI 钩子</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">进度消息、结果消息、错误消息、排队消息</div>
+            </div>
+          </div>
+
+          <div class="mermaid-container reveal">
+            <div class="mermaid">
+graph LR
+  subgraph "Tool 接口生命周期"
+    V["validateInput()\n输入校验"]
+    P["checkPermissions()\n权限检查"]
+    C["call()\n实际执行"]
+    R1["renderToolUseMessage()\n展示调用"]
+    R2["renderToolUseProgressMessage()\n展示进度"]
+    R3["renderToolResultMessage()\n展示结果"]
+    R4["renderToolUseRejectedMessage()\n展示拒绝"]
+    R5["renderToolUseErrorMessage()\n展示错误"]
+  end
+  V --> P --> C
+  C --> R2
+  C --> R3
+  P --> R4
+  V --> R5
+            </div>
+          </div>
+        </div>
+
+        <div id="concept-safety-matrix" class="reveal">
+          <h3 class="content-h3">1.2 工具的安全属性矩阵</h3>
+          <table class="arch-table">
+            <thead>
+              <tr><th>工具</th><th>isReadOnly</th><th>isDestructive</th><th>isConcurrencySafe</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>FileReadTool</code></td><td>✅ 是</td><td>❌ 否</td><td>✅ 是</td></tr>
+              <tr><td><code>GrepTool</code></td><td>✅ 是</td><td>❌ 否</td><td>✅ 是</td></tr>
+              <tr><td><code>GlobTool</code></td><td>✅ 是</td><td>❌ 否</td><td>✅ 是</td></tr>
+              <tr><td><code>FileEditTool</code></td><td>❌ 否</td><td>✅ 是</td><td>❌ 否</td></tr>
+              <tr><td><code>FileWriteTool</code></td><td>❌ 否</td><td>✅ 是</td><td>❌ 否</td></tr>
+              <tr><td><code>BashTool</code></td><td>取决于命令</td><td>取决于命令</td><td>❌ 否</td></tr>
+              <tr><td><code>AgentTool</code></td><td>❌ 否</td><td>取决于子代理</td><td>❌ 否</td></tr>
+              <tr><td><code>LSPTool</code></td><td>✅ 是</td><td>❌ 否</td><td>✅ 是</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 工具系统整体架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+  subgraph "定义层"
+    ToolInterface["Tool 接口\nTool.ts"]
+    BuildTool["buildTool()\n构造器"]
+    Defaults["TOOL_DEFAULTS\n安全默认值"]
+  end
+  subgraph "注册层"
+    AllBase["getAllBaseTools()\n基础工具集"]
+    Constants["constants/tools.ts\n角色白名单"]
+  end
+  subgraph "过滤层"
+    DenyFilter["filterToolsByDenyRules()\n拒绝规则过滤"]
+    ModeFilter["getTools()\n模式过滤"]
+    Assembly["assembleToolPool()\n工具池装配"]
+  end
+  subgraph "权限层"
+    PermCtx["ToolPermissionContext\n权限上下文"]
+    PermCheck["checkPermissions()\n工具级权限"]
+    GlobalPerm["permissions.ts\n全局权限系统"]
+  end
+  subgraph "工具实现层"
+    BashTool["BashTool"]
+    FileReadTool["FileReadTool"]
+    FileEditTool["FileEditTool"]
+    AgentTool["AgentTool"]
+    GrepTool["GrepTool"]
+    GlobTool["GlobTool"]
+  end
+
+  ToolInterface --> BuildTool
+  Defaults --> BuildTool
+  BuildTool --> BashTool
+  BuildTool --> FileReadTool
+  BuildTool --> FileEditTool
+  BashTool --> AllBase
+  FileReadTool --> AllBase
+  FileEditTool --> AllBase
+  AllBase --> DenyFilter
+  DenyFilter --> ModeFilter
+  PermCtx --> DenyFilter
+  PermCtx --> ModeFilter
+  ModeFilter --> Assembly
+  Assembly --> PermCheck
+  PermCheck --> GlobalPerm
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-design" class="reveal">
+          <h3 class="content-h3">2.2 三大核心设计思想</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔒</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. "失败安全"的默认值设计</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <code>buildTool</code> 中的 <code>TOOL_DEFAULTS</code> 采用 <strong>fail-closed</strong>（失败关闭）策略：<code>isReadOnly</code> 默认 <code>false</code>（假设会写入，更保守），<code>isConcurrencySafe</code> 默认 <code>false</code>（假设不安全，避免竞态）。新工具在未明确声明安全属性前，系统倾向于串行执行、请求权限确认。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⚡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 稳定排序保证提示缓存命中</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <code>assembleToolPool</code> 对工具按名称排序，保证<strong>系统提示（System Prompt）的稳定性</strong>。Claude API 对相同的系统提示使用缓存，如果工具顺序随机变化，每次请求都会导致缓存失效，增加 API 成本和延迟。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🎯</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. 角色白名单实现最小权限</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <code>constants/tools.ts</code> 定义了不同角色（异步代理、协调者、进程内队友）的工具白名单，不同角色只能访问其被授权的工具子集，体现了最小权限原则。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 Tool 接口 -->
+        <div id="code-tool-interface" class="reveal">
+          <h3 class="content-h3">3.1 Tool 接口核心方法（Tool.ts L362-503）</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔷 TypeScript 泛型</span>
+            <span class="pattern-badge">🔒 Zod Schema</span>
+            <span class="pattern-badge">⚡ AsyncGenerator</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/Tool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export type Tool&lt;
+  Input extends AnyObject = AnyObject,    // Zod schema 类型
+  Output = unknown,
+  P extends ToolProgressData = ToolProgressData,
+&gt; = {
+  readonly name: string                   // 工具唯一标识符
+  aliases?: string[]                      // 向后兼容的别名
+  searchHint?: string                     // 语义搜索提示词（工具延迟加载时使用）
+
+  call(
+    args: z.infer&lt;Input&gt;,
+    context: ToolUseContext,
+    canUseTool: CanUseToolFn,
+    parentMessage: AssistantMessage,
+    onProgress?: ToolCallProgress&lt;P&gt;,
+  ): Promise&lt;ToolResult&lt;Output&gt;&gt;          // 核心执行方法
+
+  readonly inputSchema: Input             // Zod schema，用于类型验证和 API 描述
+  isConcurrencySafe(input: z.infer&lt;Input&gt;): boolean
+  isEnabled(): boolean
+  isReadOnly(input: z.infer&lt;Input&gt;): boolean
+  isDestructive?(input: z.infer&lt;Input&gt;): boolean
+  interruptBehavior?(): 'cancel' | 'block'
+
+  validateInput?(
+    input: z.infer&lt;Input&gt;,
+    context: ToolUseContext,
+  ): Promise&lt;ValidationResult&gt;
+
+  checkPermissions(
+    input: z.infer&lt;Input&gt;,
+    context: ToolUseContext,
+  ): Promise&lt;PermissionResult&gt;
+
+  maxResultSizeChars: number
+  backfillObservableInput?(input: Record&lt;string, unknown&gt;): void
+}</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-tool-interface">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead><tr><th>字段</th><th>设计意图</th></tr></thead>
+                  <tbody>
+                    <tr><td>searchHint</td><td>工具延迟加载时，模型通过 ToolSearch 找到这个工具，searchHint 就是关键词提示</td></tr>
+                    <tr><td>isConcurrencySafe</td><td>返回 true 的工具可以并发执行；false 则串行排队，防止竞态条件</td></tr>
+                    <tr><td>interruptBehavior</td><td>'cancel' 适用于轻量搜索工具；'block' 适用于文件写入等不能中断的操作</td></tr>
+                    <tr><td>maxResultSizeChars: Infinity</td><td>FileReadTool 自身有令牌限制，若再落盘会产生"读文件→生成落盘文件→再读落盘文件"的无限循环</td></tr>
+                    <tr><td>backfillObservableInput</td><td>典型用例：BashTool 在 AST 解析后补充 parsed_command 字段，供 hooks 系统观察</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — maxResultSizeChars: Infinity 的特殊设计</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：系统的"大结果落盘"机制将超大输出写入文件并告知模型文件路径。如果 FileReadTool 的输出也落盘，模型下一步会再调用 FileReadTool 读取这个文件，造成无限递归。设置 Infinity 不走落盘逻辑，把大小控制完全交给工具内部的令牌限制——一个环境变量解决了一个可能无限循环的 bug。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：FileReadTool 的输出一旦落盘，你就进入"读文件→写落盘→再读落盘文件→再写落盘"的死循环，模型永远读不到真正的内容，并且会不断消耗 API token。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 buildTool -->
+        <div id="code-build-tool" class="reveal">
+          <h3 class="content-h3">3.2 buildTool 与 TOOL_DEFAULTS（Tool.ts L757-793）</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🏭 模板方法模式</span>
+            <span class="pattern-badge">🔒 Fail-Closed 策略</span>
+            <span class="pattern-badge">🌲 单一来源</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/Tool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">const TOOL_DEFAULTS = {
+  isEnabled: () =&gt; true,
+  isConcurrencySafe: (_input?: unknown) =&gt; false,   // 默认不安全并发
+  isReadOnly: (_input?: unknown) =&gt; false,           // 默认假设写入
+  isDestructive: (_input?: unknown) =&gt; false,
+  checkPermissions: (
+    input: { [key: string]: unknown },
+    _ctx?: ToolUseContext,
+  ): Promise&lt;PermissionResult&gt; =&gt;
+    Promise.resolve({ behavior: 'allow', updatedInput: input }),
+  toAutoClassifierInput: (_input?: unknown) =&gt; '',  // 空字符串 = 不参与分类器
+  userFacingName: (_input?: unknown) =&gt; '',
+}
+
+export function buildTool&lt;D extends AnyToolDef&gt;(def: D): BuiltTool&lt;D&gt; {
+  return {
+    ...TOOL_DEFAULTS,             // 先铺设安全默认值
+    userFacingName: () =&gt; def.name,
+    ...def,                       // 工具自定义实现覆盖默认值
+  } as BuiltTool&lt;D&gt;
+}</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-build">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead><tr><th>字段</th><th>设计意图</th></tr></thead>
+                  <tbody>
+                    <tr><td>TOOL_DEFAULTS 对象</td><td><strong>单一来源</strong>（Single Source of Truth）：所有工具的默认行为集中在此，避免每个工具重复实现</td></tr>
+                    <tr><td>checkPermissions → allow</td><td>默认放行是因为通用权限系统（permissions.ts）会在工具调用前独立检查规则；工具的 checkPermissions 只负责工具特定的额外检查</td></tr>
+                    <tr><td>toAutoClassifierInput → ''</td><td><strong>重要安全设计</strong>：默认值为空字符串意味着"跳过分类器"。只有明确实现此方法的工具才会被 AI 安全分类器评估</td></tr>
+                    <tr><td>...TOOL_DEFAULTS, ...def</td><td>标准的 Object Spread 覆盖：工具定义中的方法覆盖默认值</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — toAutoClassifierInput 的默认空字符串</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：默认值 '' 意味着工具"跳过 AI 安全分类器"。只有明确实现此方法的工具（BashTool、FileEditTool 等）才会被分类器评估。这就像机场安检——大多数旅客走普通通道，只有持特定标记票的人才进行额外安检。默认跳过避免了 GlobTool、GrepTool 这类无安全隐患的只读工具浪费分类器 API 调用。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果所有工具默认都参与分类器评估，每次文件搜索都要走一次 AI 判断，性能损耗巨大，auto 模式将变得无法使用。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 工具注册与装配 -->
+        <div id="code-assembly" class="reveal">
+          <h3 class="content-h3">3.3 工具注册与装配（tools.ts L193-367）</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📋 注册表模式</span>
+            <span class="pattern-badge">🔄 稳定排序</span>
+            <span class="pattern-badge">🌳 去重策略</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/tools.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function getAllBaseTools(): Tools {
+  return [
+    AgentTool, TaskOutputTool, BashTool,
+    ...(hasEmbeddedSearchTools() ? [] : [GlobTool, GrepTool]),
+    ExitPlanModeV2Tool, FileReadTool, FileEditTool, FileWriteTool,
+    ...(isEnvTruthy(process.env.ENABLE_LSP_TOOL) ? [LSPTool] : []),
+    ...(isWorktreeModeEnabled() ? [EnterWorktreeTool, ExitWorktreeTool] : []),
+  ]
+}
+
+export function assembleToolPool(
+  permissionContext: ToolPermissionContext,
+  mcpTools: Tools,
+): Tools {
+  const builtInTools = getTools(permissionContext)
+  const allowedMcpTools = filterToolsByDenyRules(mcpTools, permissionContext)
+
+  const byName = (a: Tool, b: Tool) =&gt; a.name.localeCompare(b.name)
+
+  // 关键：先对两组分别排序，再拼接，最后去重
+  // 若混合排序，MCP 工具会插入内置工具中间，破坏服务端的缓存策略
+  return uniqBy(
+    [...builtInTools].sort(byName).concat(allowedMcpTools.sort(byName)),
+    'name',   // 以 name 为去重键，内置工具（位于前面）优先保留
+  )
+}</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-assembly">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead><tr><th>关键逻辑</th><th>设计意图</th></tr></thead>
+                  <tbody>
+                    <tr><td>hasEmbeddedSearchTools()</td><td>Ant 内部版本嵌入了高性能搜索工具，Glob/Grep 工具因此多余；外部版本需要它们</td></tr>
+                    <tr><td>分批排序而非混合排序</td><td>服务端在"最后一个内置工具"后放置缓存断点；混合排序会让 MCP 工具"夹入"内置工具，破坏缓存策略</td></tr>
+                    <tr><td>uniqBy(..., 'name')</td><td>内置工具在数组前面，名称冲突时内置工具保留（lodash-es 的 uniqBy 保持首个出现）</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — filterToolsByDenyRules 的预过滤</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：拒绝规则（如 <code>mcp__my_server</code>）在工具池组装阶段就过滤掉整个 MCP 服务器的所有工具，不等到调用时才检查。模型甚至看不到被拒绝的工具，避免了模型尝试调用不存在工具的无效请求。就像餐厅菜单就不列没货的菜，而不是客人点了再说"没有"。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果工具池里包含被拒绝的工具，模型可能尝试调用它们，触发大量无效的权限检查，浪费 API 调用，也可能产生令人困惑的错误提示。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 ToolPermissionContext -->
+        <div id="code-permission" class="reveal">
+          <h3 class="content-h3">3.4 ToolPermissionContext（Tool.ts L123-148）</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/Tool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export type ToolPermissionContext = DeepImmutable&lt;{
+  mode: PermissionMode              // 'default' | 'bypassPermissions' | 'acceptEdits' | 'auto' | 'plan'
+  additionalWorkingDirectories: Map&lt;string, AdditionalWorkingDirectory&gt;
+  alwaysAllowRules: ToolPermissionRulesBySource    // 来自各配置源的"允许"规则
+  alwaysDenyRules: ToolPermissionRulesBySource     // 来自各配置源的"拒绝"规则
+  alwaysAskRules: ToolPermissionRulesBySource      // 来自各配置源的"询问"规则
+  isBypassPermissionsModeAvailable: boolean
+  isAutoModeAvailable?: boolean
+  strippedDangerousRules?: ToolPermissionRulesBySource
+  shouldAvoidPermissionPrompts?: boolean           // 后台代理：不能弹窗时自动拒绝
+  awaitAutomatedChecksBeforeDialog?: boolean       // 协调者：先等分类器再弹窗
+  prePlanMode?: PermissionMode                     // 进入 plan 模式前保存的模式
+}&gt;
+
+// 权限来源枚举
+type PermissionRuleSource =
+  | 'user_settings'      // ~/.claude/settings.json
+  | 'project_settings'   // .claude/settings.json
+  | 'local_settings'     // .claude/settings.local.json
+  | 'policy_settings'    // 企业策略
+  | 'command_line'       // --allowedTools 等 CLI 参数
+  | 'session'            // 当前会话中用户的授权选择</code></pre>
+          </div>
+
+          <div class="mermaid-container" style="margin-top: var(--space-lg);">
+            <div class="mermaid">
+flowchart TD
+  Start(["工具调用请求"]) --> DenyCheck{"拒绝规则命中？"}
+  DenyCheck -- 是 --> Deny["拒绝（deny）"]
+  DenyCheck -- 否 --> AskCheck{"询问规则命中？"}
+  AskCheck -- 是 --> Ask["弹窗询问（ask）"]
+  AskCheck -- 否 --> AllowCheck{"允许规则命中？"}
+  AllowCheck -- 是 --> Allow["允许（allow）"]
+  AllowCheck -- 否 --> ModeCheck{"当前权限模式？"}
+  ModeCheck -- "bypassPermissions" --> Allow
+  ModeCheck -- "acceptEdits" --> Allow
+  ModeCheck -- "auto" --> Classifier["AI 分类器评估"]
+  ModeCheck -- "default" --> ToolPerm["调用 checkPermissions()"]
+  Classifier -- 安全 --> Allow
+  Classifier -- 危险 --> Ask
+  ToolPerm -- allow --> Allow
+  ToolPerm -- ask --> Ask
+  ToolPerm -- deny --> Deny
+            </div>
+          </div>
+        </div>
+
+        <!-- 3.5 UI 渲染钩子 -->
+        <div id="code-render" class="reveal">
+          <h3 class="content-h3">3.5 工具的 UI 渲染钩子体系（Tool.ts L566-667）</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/Tool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 工具被调用时显示（参数可能还未完全流入）
+renderToolUseMessage(
+  input: Partial&lt;z.infer&lt;Input&gt;&gt;,   // Partial! 流式传输时参数可能不完整
+  options: { theme: ThemeName; verbose: boolean },
+): React.ReactNode
+
+// 工具执行中的实时进度
+renderToolUseProgressMessage?(
+  progressMessagesForMessage: ProgressMessage&lt;P&gt;[],
+  options: {
+    tools: Tools; verbose: boolean
+    inProgressToolCallCount?: number   // 并行执行的工具数量
+  },
+): React.ReactNode
+
+// 工具执行完成的结果
+renderToolResultMessage?(
+  content: Output,
+  progressMessagesForMessage: ProgressMessage&lt;P&gt;[],
+  options: {
+    style?: 'condensed'            // 紧凑模式（/compact 命令下）
+    theme: ThemeName; verbose: boolean
+  },
+): React.ReactNode</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — backfillObservableInput 的幂等性要求</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>backfillObservableInput</code> 在工具输入传给 hooks、权限检查、转录记录之前调用，可以添加从 AST 解析出的字段（如 <code>parsed_command</code>）。<strong>幂等性</strong>保证了在重放场景中多次调用不会产生副作用——就像照片 metadata 标注，标注一次和标注三次的结果应该完全一样。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：非幂等的 backfill 在重放或重试场景中会累积副作用，可能导致字段值翻倍、数组越来越长等难以追踪的 bug。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 内置工具分类 -->
+      <section class="content-section" id="tool-categories">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">内置工具分类与职责</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">文件操作类（读写）</h3>
+          <table class="arch-table">
+            <thead><tr><th>工具</th><th>职责</th><th>关键特性</th></tr></thead>
+            <tbody>
+              <tr><td><code>FileReadTool</code></td><td>多格式文件读取</td><td>支持文本/图片/PDF/Jupyter；令牌上限；缓存</td></tr>
+              <tr><td><code>FileEditTool</code></td><td>精确字符串替换</td><td>diff-based；冲突检测；LSP 通知</td></tr>
+              <tr><td><code>FileWriteTool</code></td><td>全量覆盖写入</td><td>原子写入；路径安全检查</td></tr>
+              <tr><td><code>GlobTool</code></td><td>文件名模式匹配</td><td>按修改时间排序；递归搜索</td></tr>
+              <tr><td><code>GrepTool</code></td><td>内容正则搜索</td><td>基于 ripgrep；多种输出模式；结果分页</td></tr>
+            </tbody>
+          </table>
+
+          <h3 class="content-h3">Shell 执行类 & 代理编排类</h3>
+          <table class="arch-table">
+            <thead><tr><th>工具</th><th>职责</th><th>关键特性</th></tr></thead>
+            <tbody>
+              <tr><td><code>BashTool</code></td><td>Shell 命令执行</td><td>多层安全检查；流式输出；后台任务</td></tr>
+              <tr><td><code>AgentTool</code></td><td>子代理创建与管理</td><td>工作树隔离；并行执行；进度跟踪</td></tr>
+              <tr><td><code>SkillTool</code></td><td>技能/工作流执行</td><td>Fork 子代理；插件市场溯源</td></tr>
+              <tr><td><code>LSPTool</code></td><td>语言服务器协议</td><td>定义跳转/引用查找；只读；并发安全</td></tr>
+              <tr><td><code>MCPTool</code></td><td>MCP 协议工具</td><td>通用输入输出；运行时动态注入</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §5 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div class="reveal">
+          <p class="content-p">
+            Claude Code 的工具系统是驾驭层（Harness Layer）设计最集中的体现——它不直接"做事"，而是定义 AI 能做什么、能做到什么程度。
+          </p>
+
+          <div class="code-block" style="margin-bottom: var(--space-lg);">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · 驾驭层能力语义声明</span>
+            </div>
+            <pre><code class="language-typescript">// AI 调用的是工具，但驾驭层通过 Tool 接口定义了操作的安全语义
+const FileEditTool = buildTool({
+  isDestructive: () =&gt; true,           // → 触发确认弹窗
+  isConcurrencySafe: () =&gt; false,      // → 强制串行执行
+  interruptBehavior: () =&gt; 'block',    // → 写入中途不允许中断
+})</code></pre>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">💡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 1：用接口而非规则约束 AI 能力</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">与其在系统提示里写"不要做 X"，不如从 API 层面设计约束：定义 AI 能调用的工具的接口，通过接口声明（isDestructive、isReadOnly）来控制 AI 行为。规则会被遗忘，接口永远存在。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🎯</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 2：分层过滤优于运行时检查</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">被拒绝的能力应在最早的环节（工具池组装）就剔除，让 AI 永远看不到不该看的工具。运行时再检查是亡羊补牢，组装时过滤是釜底抽薪。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔒</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 3：工具的安全默认值应 fail-closed</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">新工具的默认状态应该是"最受限"的，只有明确声明才能放开权限。这比"默认全开，按需限制"安全得多——工程师可能忘记加限制，但不会忘记加"我需要这个权限"。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-cyan);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⚡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 4：提示缓存是大模型应用的隐性成本</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>assembleToolPool</code> 的稳定排序是为了 Claude API 的提示缓存命中。在你自己的大模型应用中，系统提示的稳定性也直接影响 API 成本：工具列表顺序随机变化，可能导致每次请求都是"新的"提示，缓存命中率为零。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-idea reveal">
+            <div class="callout-title"><span>🌟</span> Harness Engineering 的核心信念</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              工具系统是 Harness 层的核心——通过接口声明、默认值策略、分层过滤三重机制，在"AI 能做什么"和"AI 被允许做什么"之间找到最优平衡。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §6 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 06</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：为什么 assembleToolPool 要分批排序而非混合排序？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Claude API 对相同系统提示内容使用服务端缓存，缓存断点放在"最后一个内置工具"之后。如果内置工具和 MCP 工具混合排序，MCP 工具会"插入"内置工具之间，导致缓存断点前移甚至消失，每次请求都是缓存未命中，API 成本上升。分批排序（内置工具整体在前）保证了内置工具形成稳定的连续前缀，服务端可以可靠地识别并缓存这段前缀。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：validateInput 和 checkPermissions 都可以阻止工具执行，它们的区别是什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>validateInput</code> 是"输入格式错误"的拦截，告知模型"你传的参数有问题"，模型通常会修正参数重试，不会弹窗询问用户。<code>checkPermissions</code> 是"权限不足"的拦截，会触发用户权限弹窗（或在 auto 模式下触发 AI 分类器），最终决定是否允许执行。简单说：validateInput 是告知模型的反馈循环，checkPermissions 是告知用户的安全门卫。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：为什么 renderToolUseMessage 接受 Partial&lt;Input&gt; 而 call 接受完整 Input？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Claude API 以流式方式传输工具调用的参数——参数 JSON 是逐字节到达的，不是一次性完整传来的。<code>renderToolUseMessage</code> 在参数还未完全到达时就开始渲染 UI（如显示"正在写入 /path/to/file..."），需要接受不完整的 Partial 类型。而 <code>call</code> 是实际执行，必须等参数完全到达并通过 Zod 校验后才调用，因此接受完整 Input。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：interruptBehavior: 'cancel' 适合什么类型的工具？'block' 呢？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>'cancel'</code> 适合轻量、可重做的工具，如搜索（GrepTool、GlobTool）、只读查询——用户打断后丢弃结果无损失，重新开始即可。<code>'block'</code> 适合写入类工具（FileEditTool、FileWriteTool、BashTool 的写操作）——写入中途取消会留下半写状态的文件，造成数据损坏。<code>'block'</code> 让工具继续跑完，新消息在队列等待，保证原子性。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 动手实验</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">实现一个最简单的自定义工具（如计算器工具），通过 <code>buildTool</code> 注册到工具池</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 深入阅读</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>src/services/tools/StreamingToolExecutor.ts</code> — 了解工具的并发控制实现</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 权限系统</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/utils/permissions/permissions.ts</code> 中的 <code>hasPermissionsToUseTool</code> 函数，追踪完整的权限决策链</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔌</span> AI 分类器</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>src/utils/permissions/yoloClassifier.ts</code>，了解 auto 模式下如何用 AI 评估工具操作的安全性</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>生命周期完整</strong>：validateInput → checkPermissions → call → render* 四阶段设计</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>Fail-Closed 策略</strong>：TOOL_DEFAULTS 确保新工具默认最受限</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>稳定排序</strong>：assembleToolPool 的分批排序保证提示缓存命中率</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>多源权限</strong>：ToolPermissionContext 聚合用户/项目/CLI/会话多层规则</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="04.html" class="nav-prev">← 上一课：命令系统深度解析</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="06.html" class="nav-next">下一课：Shell 执行工具深度剖析 →</a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="04.html">← 上一课</a>
+        <a href="06.html">下一课 →</a>
+      </nav>
+      <p class="footer-copy">第05课 · 工具系统架构与生命周期 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

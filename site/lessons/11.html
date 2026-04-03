@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第11课：状态管理系统设计精要 | Claude Code 教程</title>
+  <meta name="description" content="深入理解 createStore 的极简设计、useSyncExternalStore 订阅模式、onChangeAppState 副作用链与 AppState 嵌套结构。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-md); }
+    .code-anno-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .code-anno-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.6; }
+    .code-anno-table td:first-child { font-family: var(--font-code); font-size: 12px; color: var(--accent-orange); white-space: nowrap; min-width: 60px; }
+    .code-anno-table td:nth-child(2) { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); min-width: 200px; }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第四阶段 · 深度架构解析</span>
+      <span class="sep">/</span>
+      <span>第11课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 11 · PHASE 04</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      状态管理系统<br/>
+      <span class="gradient-text">设计精要</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第四阶段 · 深度架构解析</span>
+      <span class="tag tag-orange">⏱ 建议 90～120 分钟</span>
+      <span class="tag tag-blue">前置：第7课 · 第9课</span>
+      <span class="tag tag-green">createStore · AppState · onChangeAppState</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解 <code>createStore</code> 的极简设计哲学——如何用 35 行代码支撑 230+ 字段的全局状态</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握 <code>useSyncExternalStore</code> 在 Claude Code 中的订阅模式，理解为什么不用 Zustand/Redux</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>分析 <code>onChangeAppState</code> 副作用链的设计——如何将 8+ 个状态变更路径收敛到单一出口</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>熟悉 <code>AppState</code> 的复杂嵌套结构与分层设计思想（UI 状态 vs 会话级状态）</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>学会状态选择器的最佳实践，理解 <code>Object.is</code> 比较机制如何影响渲染性能</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-three">1.1 状态管理三大关切</a></div>
+        <div class="toc-item sub"><a href="#concept-terms">1.2 关键术语辨析</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 核心架构图</a></div>
+        <div class="toc-item sub"><a href="#arch-why-custom">2.2 为什么不用成熟库</a></div>
+        <div class="toc-item sub"><a href="#arch-appstate">2.3 AppState 为何 230+ 字段</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码走查</a></div>
+        <div class="toc-item sub"><a href="#code-createstore">3.1 createStore 极简实现</a></div>
+        <div class="toc-item sub"><a href="#code-sync">3.2 useSyncExternalStore</a></div>
+        <div class="toc-item sub"><a href="#code-appstate">3.3 AppState 结构设计</a></div>
+        <div class="toc-item sub"><a href="#code-onchange">3.4 onChangeAppState 副作用</a></div>
+        <div class="toc-item sub"><a href="#code-selectors">3.5 状态选择器</a></div>
+        <div class="toc-item sub"><a href="#code-settings">3.6 多源设置合并</a></div>
+        <div class="toc-item sub"><a href="#code-speculation">3.7 SpeculationState</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-three" class="reveal">
+          <h3 class="content-h3">1.1 状态管理的三大关切</h3>
+          <p class="content-p">在 Claude Code 这类复杂 CLI 应用中，状态管理需要同时解决三个维度的问题：</p>
+          <table class="arch-table">
+            <thead><tr><th>维度</th><th>挑战</th><th>Claude Code 的方案</th></tr></thead>
+            <tbody>
+              <tr><td><span class="tag tag-blue">UI 响应性</span></td><td>组件如何高效订阅状态切片</td><td><code>useSyncExternalStore</code> + 选择器</td></tr>
+              <tr><td><span class="tag tag-orange">副作用同步</span></td><td>状态变更如何触发持久化/外部同步</td><td><code>onChangeAppState</code> 统一回调</td></tr>
+              <tr><td><span class="tag tag-purple">状态隔离</span></td><td>UI 状态 vs 会话级状态如何分离</td><td><code>AppState</code> vs <code>bootstrap/state.ts</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="concept-terms" class="reveal">
+          <h3 class="content-h3">1.2 关键术语辨析</h3>
+          <table class="arch-table">
+            <thead><tr><th>术语</th><th>定义</th></tr></thead>
+            <tbody>
+              <tr><td><code>AppState</code></td><td>全局 UI 状态快照，存储在 <code>createStore</code> 创建的 Store 中，React 组件通过 <code>useSyncExternalStore</code> 订阅</td></tr>
+              <tr><td><code>Store</code></td><td>状态容器抽象，提供 <code>getState</code> / <code>setState</code> / <code>subscribe</code> 三件套</td></tr>
+              <tr><td>Selector（选择器）</td><td>从全量状态中提取所需片段的纯函数，<code>useAppState(s =&gt; s.verbose)</code> 中的箭头函数就是选择器</td></tr>
+              <tr><td><code>onChangeAppState</code></td><td>Store 的 <code>onChange</code> 回调，在每次状态变更后执行副作用（持久化、外部同步等）</td></tr>
+              <tr><td><code>bootstrap/state.ts</code></td><td>会话级非 UI 状态（如统计、指标、令牌预算），不在 React 树中，独立于 AppState</td></tr>
+            </tbody>
+          </table>
+
+          <div class="mermaid-container reveal">
+            <div class="mermaid">
+graph TB
+    subgraph "React 树"
+        Provider["AppStateProvider<br/>注入 Store"]
+        Hook["useAppState(selector)<br/>订阅状态片段"]
+        Comp["React 组件<br/>按需重渲染"]
+    end
+    subgraph "Store 层"
+        Store["createStore<br/>35行极简实现"]
+        State["AppState 快照<br/>230+ 字段"]
+    end
+    subgraph "副作用层"
+        OnChange["onChangeAppState<br/>统一副作用入口"]
+        Settings["settings.ts<br/>设置持久化"]
+        Config["config.ts<br/>全局配置"]
+    end
+    subgraph "会话层（非 UI）"
+        Bootstrap["bootstrap/state.ts<br/>统计/指标/令牌预算"]
+        Signal["signal.ts<br/>事件信号"]
+    end
+    Provider --> Store
+    Hook --> Store
+    Store --> Comp
+    Store --> OnChange
+    OnChange --> Settings
+    OnChange --> Config
+    Signal -.-> Bootstrap
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 核心架构图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant UI as React 组件
+    participant Hooks as useAppState / useSetAppState
+    participant Store as createStore
+    participant Callback as onChangeAppState
+    participant Persist as 持久化层
+
+    UI->>Hooks: 调用 useSetAppState 更新状态
+    Hooks->>Store: setState(prev => ({...prev, x: newValue}))
+    Store->>Store: Object.is(next, prev) 比较
+    alt 值发生变化
+        Store->>Callback: onChange({ newState, oldState })
+        Callback->>Persist: 权限模式同步/设置写入/配置保存
+        Store-->>UI: 通知所有订阅者 listener()
+        UI-->>UI: useSyncExternalStore 触发重渲染
+    else 值未变化（Object.is 相同）
+        Store-->>UI: 静默短路，不触发通知
+    end
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-why-custom" class="reveal">
+          <h3 class="content-h3">2.2 为什么不用成熟状态库？</h3>
+          <p class="content-p">既然 Zustand、Redux Toolkit 这些库已经非常成熟，为什么 Claude Code 要手写一个 35 行的 <code>createStore</code>？答案有三层：</p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">📦</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">捆绑体积控制</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">CLI 工具启动速度极关键。自研 Store 零依赖，相比引入 Redux（~3KB gzip）节省每次启动的解析开销</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🪝</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">单一 onChange 钩子</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">内置 <code>onChange</code> 参数，状态变更时自动调用，让 <code>onChangeAppState</code> 这一副作用聚合点得以优雅实现</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">⚛️</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">React 18 完美契合</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>useSyncExternalStore</code> 是 React 官方推荐的外部 Store 订阅 API，能正确处理 Concurrent Mode 下的撕裂问题</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-appstate" class="reveal">
+          <h3 class="content-h3">2.3 AppState 为何有 230+ 字段？</h3>
+          <p class="content-p">这看起来是反模式，但背后有深思熟虑的原因：Claude Code 是单进程应用，所有功能共享同一个 React 树。将状态拆分到多个 Store 会引入跨 Store 同步的复杂性，而集中管理则可以通过选择器做精确订阅。</p>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 关键设计决策</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              <code>AppState</code> 用 <code>DeepImmutable&lt;{...}&gt;</code> 包裹大部分字段，但 <code>tasks</code> 和 <code>agentNameRegistry</code> 被显式排除在外——因为它们包含函数类型（<code>TaskState</code> 中有回调），而 TypeScript 的深度只读无法正确处理函数。这一细节体现了类型系统使用的务实态度。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 createStore -->
+        <div id="code-createstore" class="reveal">
+          <h3 class="content-h3">3.1 createStore — 35 行撑起整个状态系统</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/state/store.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">type Listener = () => void
+type OnChange&lt;T&gt; = (args: { newState: T; oldState: T }) => void
+
+export type Store&lt;T&gt; = {
+  getState: () => T
+  setState: (updater: (prev: T) => T) => void
+  subscribe: (listener: Listener) => () => void
+}
+
+export function createStore&lt;T&gt;(
+  initialState: T,
+  onChange?: OnChange&lt;T&gt;,   // ← 副作用钩子：状态变更时回调
+): Store&lt;T&gt; {
+  let state = initialState
+  const listeners = new Set&lt;Listener&gt;()  // ← Set 而非数组：O(1) 增删
+
+  return {
+    getState: () => state,
+
+    setState: (updater: (prev: T) => T) => {
+      const prev = state
+      const next = updater(prev)        // ← 函数式更新，避免直接修改
+      if (Object.is(next, prev)) return // ← 引用相等则短路，避免无效通知
+      state = next
+      onChange?.({ newState: next, oldState: prev }) // ← 先触发副作用
+      for (const listener of listeners) listener()   // ← 再通知订阅者
+    },
+
+    subscribe: (listener: Listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)  // ← 返回取消订阅函数
+    },
+  }
+}</code></pre>
+          </div>
+
+          <table class="code-anno-table" style="margin-top: var(--space-lg);">
+            <thead><tr><th>代码</th><th>关键点</th><th>设计意图</th></tr></thead>
+            <tbody>
+              <tr><td>new Set&lt;Listener&gt;()</td><td>用 Set 存储监听者</td><td>O(1) 增删，避免数组 indexOf 遍历</td></tr>
+              <tr><td>updater: (prev: T) =&gt; T</td><td>函数式更新</td><td>确保更新基于最新状态，避免闭包陈旧值</td></tr>
+              <tr><td>Object.is(next, prev)</td><td>引用相等检查</td><td>对象引用未变则跳过通知，防止无限循环</td></tr>
+              <tr><td>onChange?.({...})</td><td>先回调副作用</td><td>副作用（持久化）优先于 UI 通知，保证一致性</td></tr>
+              <tr><td>return () =&gt; listeners.delete()</td><td>返回取消订阅</td><td>符合 React <code>useEffect</code> 清理函数约定</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 35 行代码撑起整个状态系统</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>createStore</code> 的极简设计就像一个精密小弹簧——虽然小，但每个细节都有道理。用 Set 而非数组存监听者是 O(1) 增删；<code>onChange</code> 先于 <code>listener()</code> 执行是保证持久化早于 UI 更新的关键。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：用数组存监听者，删除时要 O(n) 查找；如果先通知 UI 再持久化，用户可能在持久化失败前就看到了"已保存"的界面，造成数据不一致。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 useSyncExternalStore -->
+        <div id="code-sync" class="reveal">
+          <h3 class="content-h3">3.2 useSyncExternalStore 订阅机制</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/state/AppState.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function useAppState&lt;T&gt;(selector: (state: AppState) => T): T {
+  const store = useAppStore()
+
+  const get = () => {
+    const state = store.getState()
+    const selected = selector(state)
+
+    // 开发模式保护：禁止返回整个 state 对象
+    if ("ant" === 'ant' && state === selected) {
+      throw new Error(
+        `Your selector returned the original state, which is not allowed.`
+      )
+    }
+    return selected
+  }
+
+  // useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+  // React 18 官方外部 Store 订阅 API
+  return useSyncExternalStore(store.subscribe, get, get)
+}</code></pre>
+          </div>
+
+          <div class="callout callout-warning" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>⚠️</span> 关键约束：不要在选择器中创建新对象</div>
+            <pre style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-md); font-size: 13px; overflow-x: auto;"><code class="language-typescript">// DO NOT return new objects from the selector -- Object.is will always see
+// them as changed. Instead, select an existing sub-object reference:
+const { text, promptId } = useAppState(s => s.promptSuggestion) // good
+const obj = useAppState(s => ({ text: s.text })) // BAD! Always new object</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — useSyncExternalStore 避免 Concurrent Mode 撕裂</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>useSyncExternalStore</code> 是 React 官方为外部 Store 提供的订阅 API，专门解决 Concurrent Mode 下的"撕裂"问题。禁止返回新对象的约束是必要的工程纪律——对象引用每次都变，<code>Object.is</code> 就认为"值改变了"，组件无限重渲染。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：用 <code>useEffect + useState</code> 订阅 store，在 React Concurrent Mode 下会出现组件看到"过时的状态快照"的 bug，且这类 bug 很难复现和调试。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 AppState 结构 -->
+        <div id="code-appstate" class="reveal">
+          <h3 class="content-h3">3.3 AppState 结构——复杂嵌套的设计哲学</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/state/AppStateStore.ts（精简版）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export type AppState = DeepImmutable&lt;{
+  // 基础 UI 状态
+  settings: SettingsJson
+  verbose: boolean
+  mainLoopModel: ModelSetting
+
+  // 视图状态
+  expandedView: 'none' | 'tasks' | 'teammates'
+  footerSelection: FooterItem | null
+
+  // 权限与工具
+  toolPermissionContext: ToolPermissionContext
+
+  // 远程桥接（replBridge 前缀的字段集中管理）
+  replBridgeEnabled: boolean
+  replBridgeConnected: boolean
+  // ... 8个 replBridge 相关字段
+
+  // 功能开关
+  thinkingEnabled: boolean | undefined
+  fastMode: boolean
+  effortValue: EffortValue
+}&gt; &amp; {
+  // ↓ 显式排除 DeepImmutable 的部分（含函数类型）
+  tasks: { [taskId: string]: TaskState }
+  agentNameRegistry: Map&lt;string, AgentId&gt;
+
+  mcp: {
+    clients: MCPServerConnection[]
+    tools: Tool[]
+    pluginReconnectKey: number  // ← 版本键：触发 effects 重跑
+  }
+  plugins: {
+    enabled: LoadedPlugin[]
+    needsRefresh: boolean  // ← 脏标记模式
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — AppState 的三个精妙细节</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：前缀分组（<code>replBridge*</code> 8个字段）比嵌套对象更新更简洁；版本键（<code>pluginReconnectKey</code>）让"触发重连"这个命令式操作以声明式方式表达；<code>IDLE_SPECULATION_STATE</code> 常量复用同一引用，避免每次重置都创建新对象。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：版本键如果用函数调用代替（<code>triggerReconnect()</code>），就需要在状态外维护命令通道，增加复杂性；每次 <code>{status: 'idle'}</code> 都新建对象，Speculation 完成时的状态重置会触发一次不必要的重渲染。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 onChangeAppState -->
+        <div id="code-onchange" class="reveal">
+          <h3 class="content-h3">3.4 onChangeAppState — 副作用的统一出口</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/state/onChangeAppState.ts（精简版）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function onChangeAppState({
+  newState,
+  oldState,
+}: {
+  newState: AppState
+  oldState: AppState
+}) {
+  // ① 权限模式同步——8+ 个变更路径的统一出口
+  const prevMode = oldState.toolPermissionContext.mode
+  const newMode = newState.toolPermissionContext.mode
+  if (prevMode !== newMode) {
+    const prevExternal = toExternalPermissionMode(prevMode)
+    const newExternal = toExternalPermissionMode(newMode)
+    if (prevExternal !== newExternal) {
+      notifySessionMetadataChanged({ permission_mode: newExternal })
+    }
+    notifyPermissionModeChanged(newMode)  // SDK 状态流
+  }
+
+  // ② 主循环模型持久化
+  if (newState.mainLoopModel !== oldState.mainLoopModel) {
+    updateSettingsForSource('userSettings', { model: newState.mainLoopModel })
+  }
+
+  // ③④⑤ 视图偏好/详细日志/面板可见性持久化
+
+  // ⑥ 设置变更后的认证缓存清理
+  if (newState.settings !== oldState.settings) {
+    clearApiKeyHelperCache()
+    clearAwsCredentialsCache()
+    applyConfigEnvironmentVariables(newState.settings)
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-warning" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>⚠️</span> 这段代码解决了一个真实 Bug</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+              原来 8+ 个变更路径各自为政——Shift+Tab 循环、ExitPlanModePermissionRequest 对话框、/plan 命令、rewind、REPL bridge……每条路径各自通知或遗漏。现在通过 <code>onChange</code> 钩子，任何 <code>setState</code> 调用都会自动触发同步，<strong>调用方无需任何改动</strong>。
+            </p>
+          </div>
+
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 设计点评 — 副作用收归单口的威力</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>onChangeAppState</code> 就像公司里的"行政总台"——不管谁修改了权限模式（8+ 条代码路径），总台都会自动同步到所有相关系统（SDK、外部监控）。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：就像源码注释描述的真实 bug——8+ 条权限变更路径中只有 2 条通知了 CCR，其他 6+ 条静默丢失，导致多代理场景下权限不同步的 bug 极难发现。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 选择器 -->
+        <div id="code-selectors" class="reveal">
+          <h3 class="content-h3">3.5 状态选择器设计</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/state/selectors.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function getViewedTeammateTask(
+  // ← 使用 Pick 类型：只要求传入所需字段，便于测试与复用
+  appState: Pick&lt;AppState, 'viewingAgentTaskId' | 'tasks'&gt;,
+): InProcessTeammateTaskState | undefined {
+  const { viewingAgentTaskId, tasks } = appState
+  if (!viewingAgentTaskId) return undefined
+  const task = tasks[viewingAgentTaskId]
+  if (!task) return undefined
+  if (!isInProcessTeammateTask(task)) return undefined
+  return task  // ← 返回现有对象引用，Object.is 稳定
+}
+
+// 判别联合类型：类型安全的输入路由
+export type ActiveAgentForInput =
+  | { type: 'leader' }
+  | { type: 'viewed'; task: InProcessTeammateTaskState }
+  | { type: 'named_agent'; task: LocalAgentTaskState }
+
+export function getActiveAgentForInput(appState: AppState): ActiveAgentForInput {
+  const viewedTask = getViewedTeammateTask(appState)
+  if (viewedTask) return { type: 'viewed', task: viewedTask }
+  // ...
+  return { type: 'leader' }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — Pick 类型约束的三重价值</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>appState: Pick&lt;AppState, 'viewingAgentTaskId' | 'tasks'&gt;</code> 只声明所需字段而非整个 AppState，既是文档（函数依赖一眼看清），也方便测试（只需提供2个字段），还防止滥用（函数无法意外访问未声明字段）。就像向同事借书时只说"借一本红色的书"而不是"给我钥匙"——权限最小化。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：参数类型为完整 AppState，单元测试需要构造 230+ 字段的对象，测试成本极高，实际上没人会写测试，选择器就成了"无法测试的黑盒"。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 多源设置合并 -->
+        <div id="code-settings" class="reveal">
+          <h3 class="content-h3">3.6 多源设置合并——层叠优先级系统</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/utils/settings/constants.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 优先级从低到高
+export const SETTING_SOURCES = [
+  'userSettings',    // 用户全局配置（~/.claude/settings.json）
+  'projectSettings', // 项目共享配置（.claude/settings.json）
+  'localSettings',   // 本地覆盖（.claude/settings.local.json，已 gitignore）
+  'flagSettings',    // --settings CLI 标志
+  'policySettings',  // 企业管理策略（最高优先级）
+] as const
+
+// 自定义合并策略
+function settingsMergeCustomizer(objValue, srcValue, key, object) {
+  // 数组：直接替换（不是追加）
+  if (Array.isArray(srcValue)) return srcValue
+
+  // undefined：视为"删除"语义，从对象中移除键
+  if (srcValue === undefined && object && typeof key === 'string') {
+    delete object[key]
+    return undefined
+  }
+
+  // 其他类型：委托给 lodash 默认深度合并
+  return undefined
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 层叠优先级合并的企业级设计</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：五层优先级加上 <code>undefined</code> 删除语义和数组完全替换策略，让企业通过 MDM 锁定的设置无法被用户配置文件覆盖。就像公司规章（policySettings）> 部门规定（projectSettings）> 个人习惯（userSettings）的现实层级。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：用户用 <code>--effort max</code> 启动后，一旦有其他设置变更触发热重载，<code>effortValue</code> 会被重置回配置文件中的值，CLI 标志形同虚设。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.7 SpeculationState -->
+        <div id="code-speculation" class="reveal">
+          <h3 class="content-h3">3.7 SpeculationState — 受控可变性</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/state/AppStateStore.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export type SpeculationState =
+  | { status: 'idle' }
+  | {
+      status: 'active'
+      id: string
+      abort: () => void        // ← 函数类型，无法被 DeepImmutable 包裹
+      startTime: number
+      messagesRef: { current: Message[] }    // ← 可变 ref：避免 N 次展开
+      writtenPathsRef: { current: Set&lt;string&gt; }
+      boundary: CompletionBoundary | null
+      // ...
+    }
+
+export const IDLE_SPECULATION_STATE: SpeculationState = { status: 'idle' }
+// ↑ 常量复用：idle 状态共享同一引用
+//   避免每次重置时 Object.is 检查失败（新建 {} !== 旧建 {}）</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 受控可变性的工程边界</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>messagesRef: { current: Message[] }</code> 在大型不可变状态树中引入了一个"可变口袋"，让投机执行期间的高频消息写入不触发 setState（避免 N 次消息 = N 次 O(N) 数组展开 = O(N²) 内存操作）。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：每条流式消息都触发一次完整的状态展开和 UI 重渲染，在 100+ 条消息的长响应中，渲染性能会严重下降，甚至导致 UI 卡顿。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">🏗️ Harness Engineering 视角</h3>
+          <p class="content-p">Claude Code 的状态管理系统体现了"驾驭 AI 状态"的核心思想——把复杂的多路状态变更收拢到可预测的管道中：</p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--accent-blue); margin-bottom: var(--space-sm);">⚙️ 约束</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• <code>AppStateProvider</code> 防嵌套保护确保全局状态只有一个来源</li>
+                <li>• 选择器约束（禁止返回新对象）防止无限重渲染</li>
+                <li>• <code>DeepImmutable</code> 包裹，让意外状态突变在编译时被发现</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--accent-green); margin-bottom: var(--space-sm);">🚀 增强</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• 35 行 <code>createStore</code> 零依赖，节省启动解析开销</li>
+                <li>• <code>useSyncExternalStore</code> 正确处理 React 18 Concurrent Mode</li>
+                <li>• <code>policySettings</code> 层允许企业通过 MDM 锁定 AI 配置</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-orange); grid-column: span 2;">
+              <div style="font-weight: 700; color: var(--accent-orange); margin-bottom: var(--space-sm);">🎭 编排</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• <code>onChangeAppState</code> 将 8+ 条权限变更路径的副作用收归单一出口</li>
+                <li>• <code>bootstrap/state.ts</code> 的会话级状态独立于 React 树，防止 AI 内部统计数据污染 UI 层</li>
+                <li>• <code>messagesRef</code> 的受控可变性在 AI 流式输出期间避免 O(N²) 的状态展开操作</li>
+              </ul>
+            </div>
+          </div>
+
+          <h3 class="content-h3" style="margin-top: var(--space-2xl);">💡 对大模型应用的启发</h3>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🏢</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">AI 配置必须支持企业级锁定</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">任何面向企业的 AI 应用都应该设计配置优先级体系，允许 IT 管理员通过 MDM 或策略文件覆盖用户配置——这是企业采购的基本要求。</p>
+              </div>
+            </div>
+          </div>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔗</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">副作用要收归单口</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">AI 应用的状态变更路径比普通应用复杂得多。把副作用聚合到 <code>onChange</code> 这样的单一入口，可以防止"8+ 条路径只有 2 条通知了外部系统"这类难以发现的 bug。</p>
+              </div>
+            </div>
+          </div>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🌊</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">流式输出需要特殊的状态设计</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">LLM 的流式响应是高频写入场景，每条 token 都触发一次 <code>setState</code> 会导致 O(N²) 性能问题。应使用 mutable ref 缓冲中间状态，只在完成时一次性更新 UI 状态。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：如果一个组件订阅了 <code>s =&gt; s.tasks</code>，而 tasks 对象每次有任何子任务更新就会创建新引用，这个组件会频繁重渲染。如何设计选择器来避免这个问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：可以选择具体的子任务而非整个 tasks 对象：<code>useAppState(s =&gt; s.tasks[taskId])</code>。更好的做法是将"订阅任务列表"和"展示单个任务"分离成不同组件，父组件只订阅 taskIds 数组，子组件分别订阅各自的 <code>tasks[id]</code>。这样单个任务更新只触发对应子组件重渲染，而不是整个列表重渲染。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：<code>onChangeAppState</code> 是同步执行的，这意味着每次 setState 都会同步写文件（设置持久化）。这在高频状态变更场景下会有性能问题吗？Claude Code 是如何处理的？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>updateSettingsForSource</code> 内部有防抖/写透缓存机制——实际的磁盘写入不是立即发生的，而是通过 <code>saveGlobalConfig</code> 维护一个内存缓存，多次快速更新会合并后再写入磁盘（类似写缓冲）。<code>onChangeAppState</code> 只是同步更新内存中的状态，磁盘 I/O 是异步的、合并的。这是"写透缓存 + 防抖写入"模式的结合。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：<code>bootstrap/state.ts</code> 中的会话级状态为什么不放入 <code>AppState</code>？如果放进去，会带来什么问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：会话级状态（统计、令牌预算）需要在无头模式（没有 React 树）下工作，放入 AppState 则它们必须依赖 React。另外，这些数据更新极频繁（每条 AI 消息都更新令牌计数），放入 AppState 会导致每次 token 累计都触发 React 重渲染。<code>bootstrap/state.ts</code> 使用 <code>signal.ts</code> 的事件通信机制，只在 UI 需要时推送快照，而不是每次更新都通知 React。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：<code>AppState</code> 用 <code>DeepImmutable</code> 包裹了大部分字段，但 <code>tasks</code> 和 <code>mcp</code> 却没有。这个设计决策带来了什么便利，又带来了什么风险？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<strong>便利</strong>：<code>tasks</code> 中的 <code>TaskState</code> 包含回调函数，TypeScript 的深度只读无法正确处理函数类型；排除这些字段让代码能正常编译和运行。<strong>风险</strong>：排除后，外部代码可以直接修改 <code>tasks[id]</code> 的属性而不通过 <code>setState</code>，这种修改不会触发 <code>onChange</code> 回调，也不会通知 React 订阅者，可能导致 UI 与状态不一致。需要靠团队约定来维护正确性。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 深入阅读</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>src/utils/settings/settings.ts</strong> — 理解多源设置合并策略（用户设置、项目设置、本地覆盖的优先级）</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 扩展实践</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">追踪 <strong>src/utils/config.ts</strong> 中的 <code>saveGlobalConfig</code>，理解写透缓存和文件系统监听机制</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 架构探索</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <strong>src/bootstrap/state.ts</strong>，理解会话级状态如何通过 <code>signal.ts</code> 进行事件通信而非共享 AppState</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>⚖️</span> 对比研究</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">对比本课的状态管理方案与 Zustand 的实现，分析两者在 <code>useSyncExternalStore</code> 使用上的异同</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">Claude Code 的状态管理系统体现了"够用即可，不过度抽象"的工程哲学：</p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>Store 层</strong>极简（35行），只做必要的事（存储、更新、通知）</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>AppState 层</strong>复杂，但有明确的分层逻辑（DeepImmutable 边界、前缀分组）</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>副作用层</strong>集中（onChangeAppState），将散乱的同步逻辑收敛到单一出口</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>Hook 层</strong>精准，利用 React 18 的 <code>useSyncExternalStore</code> 实现精确订阅</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 课程导航 -->
+        <nav class="lesson-nav-footer" aria-label="课程导航">
+          <a href="10.html" class="nav-prev">← 上一课：Hook 系统</a>
+          <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+          <a href="12.html" class="nav-next">下一课：React + Ink 终端 UI →</a>
+        </nav>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="12.html">下一课 →</a>
+      </nav>
+      <p class="footer-copy">第11课 · 状态管理系统设计精要 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第01课：Claude Code 全景架构解析 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 的七层模块化架构，理解命令+工具双轨设计、QueryEngine 调度中枢与关键技术选型。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    /* ── 课程页面专属布局 ─── */
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    /* ── 侧边栏目录 ─── */
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    /* ── 主内容区 ─── */
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    /* ── 章节容器 ─── */
+    .content-section {
+      margin-bottom: var(--space-3xl);
+    }
+
+    .content-section:last-child { margin-bottom: 0; }
+
+    /* ── 架构层级表格 ─── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+
+    .arch-table tr:hover td { background: #f8fafc; }
+
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── 层级对比表 ─── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    /* ── 代码注释解析表 ─── */
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:nth-child(2) {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      min-width: 200px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    /* ── 设计模式卡片 ─── */
+    .pattern-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      transition: all var(--transition-normal);
+    }
+
+    .pattern-card:hover {
+      border-color: #bfdbfe;
+      box-shadow: var(--shadow-md);
+    }
+
+    .pattern-card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+
+    .pattern-number {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--gradient-accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 900;
+      color: #ffffff;
+      flex-shrink: 0;
+    }
+
+    /* ── 亮点卡片 ─── */
+    .highlight-card {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      margin-bottom: var(--space-md);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .highlight-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 4px; height: 100%;
+      background: var(--gradient-accent);
+    }
+
+    .highlight-card-title {
+      font-weight: 700;
+      color: var(--accent-blue);
+      margin-bottom: var(--space-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    /* ── 陷阱卡片 ─── */
+    .trap-card {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      margin-bottom: var(--space-md);
+    }
+
+    .trap-card-title {
+      font-weight: 700;
+      color: var(--accent-orange);
+      margin-bottom: var(--space-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .trap-solution {
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid #fde68a;
+      color: var(--accent-green);
+      font-size: var(--font-size-sm);
+    }
+
+    /* ── 学习目标清单 ─── */
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    /* ── 响应式 ─── */
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    /* ── 内联 code ─── */
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* ── 强调文字 ─── */
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    /* ── 节内容标题 ─── */
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    /* ── 概念对比 ─── */
+    .concept-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-lg);
+      margin: var(--space-lg) 0;
+    }
+
+    @media (max-width: 640px) {
+      .concept-split { grid-template-columns: 1fr; }
+    }
+
+    .concept-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+    }
+
+    .concept-box.user-side { border-top: 3px solid var(--accent-blue); }
+    .concept-box.ai-side { border-top: 3px solid var(--accent-purple); }
+
+    .concept-box-label {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: var(--space-sm);
+    }
+
+    .user-side .concept-box-label { color: var(--accent-blue); }
+    .ai-side .concept-box-label { color: var(--accent-purple); }
+
+    .concept-box-title {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-sm);
+    }
+
+    .concept-box ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .concept-box li {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      padding-left: 16px;
+      position: relative;
+    }
+
+    .concept-box li::before {
+      content: '›';
+      position: absolute;
+      left: 0;
+      color: var(--accent-cyan);
+    }
+
+    /* ── 课程导航按钮 ─── */
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    /* ── 进度条颜色 ─── */
+    #progress-bar { background: var(--gradient-accent); }
+  </style>
+</head>
+<body>
+
+<!-- 顶部进度条 -->
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     导航栏
+═══════════════════════════════════════════════════════════ -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     课程 Hero 区域
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-header">
+  <div class="container">
+    <!-- 面包屑 -->
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-blue">第一阶段 · 全局视角</span>
+      <span class="sep">/</span>
+      <span>第01课</span>
+    </nav>
+
+    <!-- 课程编号 + 标题 -->
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 01 · PHASE 01</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      Claude Code<br/>
+      <span class="gradient-text">全景架构解析</span>
+    </h1>
+
+    <!-- 元数据 -->
+    <div class="lesson-meta">
+      <span class="tag tag-blue">第一阶段 · 全局视角</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐ 难度中等</span>
+      <span class="tag tag-green">7 层架构 · 5 大核心概念</span>
+    </div>
+
+    <!-- 学习目标 -->
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>描述 Claude Code 的七层模块化架构，理解各层职责与边界</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>解释"命令 + 工具"双轨设计模式的哲学根源与工程权衡</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>解读 <code>QueryEngine</code> 在整个系统中作为"对话调度中枢"的地位</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>分析 <code>main.tsx</code> → <code>commands.ts</code> → <code>tools.ts</code> → <code>QueryEngine</code> 的注册链路</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>说明技术选型（Bun / TypeScript / React+Ink）的决策依据</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     主体布局：侧边栏 + 内容
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <!-- ── 侧边栏目录 ────────────────────── -->
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-layers">1.1 架构层次</a></div>
+        <div class="toc-item sub"><a href="#concept-dual">1.2 命令 vs 工具</a></div>
+        <div class="toc-item sub"><a href="#concept-qe">1.3 QueryEngine</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 总体架构图</a></div>
+        <div class="toc-item sub"><a href="#arch-dual-reason">2.2 双轨设计原因</a></div>
+        <div class="toc-item sub"><a href="#arch-qe-design">2.3 QueryEngine 哲学</a></div>
+        <div class="toc-item sub"><a href="#arch-tech">2.4 技术选型决策</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-main">3.1 main.tsx 并行预取</a></div>
+        <div class="toc-item sub"><a href="#code-commands">3.2 commands.ts 特性标志</a></div>
+        <div class="toc-item sub"><a href="#code-tool">3.3 Tool.ts 类型约束</a></div>
+        <div class="toc-item sub"><a href="#code-qe">3.4 QueryEngine 拒绝追踪</a></div>
+        <div class="toc-item sub"><a href="#code-tools">3.5 tools.ts 工具注册</a></div>
+        <div class="toc-item sub"><a href="#code-async-gen">3.6 AsyncGenerator 流式架构</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <!-- ── 主内容区 ────────────────────────────────── -->
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- ══════════════════════════════════════
+           §1 核心概念
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <!-- 1.1 架构层次 -->
+        <div id="concept-layers" class="reveal">
+          <h3 class="content-h3">1.1 什么是"架构层次"</h3>
+          <p class="content-p">
+            Claude Code 并不是一个扁平的脚本，它是一个由<strong>多个职责明确的模块</strong>构成的分层系统。
+            理解架构就是理解：<em>每一层做什么，谁调用谁，边界在哪里</em>。
+          </p>
+
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>层次</th>
+                <th>核心问题</th>
+                <th>代表模块</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tag tag-blue">入口层</span></td>
+                <td>谁来启动？</td>
+                <td><code>src/main.tsx</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-cyan">初始化层</span></td>
+                <td>如何准备运行环境？</td>
+                <td><code>src/entrypoints/init.ts</code>、<code>src/setup.ts</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-green">命令层</span></td>
+                <td>用户能做什么？</td>
+                <td><code>src/commands/</code>、<code>src/commands.ts</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-orange">工具层</span></td>
+                <td>AI 能调用什么？</td>
+                <td><code>src/tools/</code>、<code>src/tools.ts</code>、<code>src/Tool.ts</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-purple">查询层</span></td>
+                <td>如何与 Claude 对话？</td>
+                <td><code>src/QueryEngine.ts</code>、<code>src/query.ts</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-blue">状态层</span></td>
+                <td>运行时状态如何维护？</td>
+                <td><code>src/state/</code>、<code>src/bootstrap/state.ts</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-cyan">UI 层</span></td>
+                <td>终端界面如何呈现？</td>
+                <td><code>src/components/</code>、<code>src/ink/</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 1.2 命令 vs 工具 -->
+        <div id="concept-dual" class="reveal">
+          <h3 class="content-h3">1.2 命令 vs 工具：两条不同的调度轨道</h3>
+          <p class="content-p">
+            这是理解整个系统<strong>最重要</strong>的概念对。两者在调用者、安全边界、执行时机上截然不同。
+          </p>
+
+          <div class="concept-split">
+            <div class="concept-box user-side">
+              <div class="concept-box-label">用户层</div>
+              <div class="concept-box-title">命令（Command）</div>
+              <ul>
+                <li>由 <code>/</code> 前缀触发</li>
+                <li>面向<strong>人类用户</strong></li>
+                <li>如 <code>/review</code>、<code>/commit</code>、<code>/config</code></li>
+                <li>可直接返回文本，或调用 QueryEngine</li>
+                <li>信任已知，安全检查宽松</li>
+              </ul>
+            </div>
+            <div class="concept-box ai-side">
+              <div class="concept-box-label">AI 层</div>
+              <div class="concept-box-title">工具（Tool）</div>
+              <ul>
+                <li>由 Claude 模型在对话中<strong>自主调用</strong></li>
+                <li>面向 <strong>AI 模型</strong></li>
+                <li>如 <code>BashTool</code>、<code>FileReadTool</code></li>
+                <li>模型与宿主环境交互的<strong>唯一通道</strong></li>
+                <li>需授权，权限系统严格控制</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="callout callout-info">
+            <div class="callout-title"><span>💡</span> 关键区别</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              命令是"<strong>用户意图的入口</strong>"，工具是"<strong>模型能力的出口</strong>"。两者通过 QueryEngine 汇聚。<br/>
+              双轨设计将信任层次天然分离——命令面向用户（信任已知），工具面向模型（信任需建立）。
+            </p>
+          </div>
+
+          <!-- 数据流图 -->
+          <div class="mermaid-container reveal">
+            <div class="mermaid">
+graph LR
+    User["👤 用户"] -->|"/commit"| CMD["命令层<br/>commands.ts"]
+    CMD -->|触发对话| QE["QueryEngine<br/>调度中枢"]
+    QE -->|模型决策| LLM["Claude API"]
+    LLM -->|tool_use| TOOL["工具层<br/>tools.ts"]
+    TOOL -->|执行| ENV["宿主环境<br/>文件系统 / Shell / 网络"]
+    ENV -->|结果| QE
+    QE -->|流式输出| UI["终端 UI"]
+            </div>
+          </div>
+        </div>
+
+        <!-- 1.3 QueryEngine -->
+        <div id="concept-qe" class="reveal">
+          <h3 class="content-h3">1.3 QueryEngine：统一调度中枢</h3>
+          <p class="content-p">
+            <code>QueryEngine</code> 是全系统最核心的类，它不仅仅是一个 API 调用封装，
+            而是一个完整的<strong>对话生命周期管理器</strong>：
+          </p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">📝</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">消息历史管理</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">维护跨轮次的 <code>mutableMessages</code>，保持对话连贯性</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🔒</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">权限拒绝追踪</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">封装 <code>permissionDenials</code>，记录所有权限决策</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">📁</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">文件状态缓存</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">管理 <code>readFileState</code>，避免重复读取</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">📊</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">用量统计 + 流式输出</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">统计 API 用量，提供 <code>AsyncGenerator</code> 流式接口</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §2 架构设计与设计思想
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <!-- 2.1 总体架构图 -->
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 系统总体架构图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "入口层"
+        MAIN["main.tsx<br/>CLI 解析 + 并行预取 + 渲染启动"]
+    end
+    subgraph "初始化层"
+        INIT["entrypoints/init.ts<br/>配置 + 遥测 + 网络"]
+        SETUP["setup.ts<br/>工作树 + 钩子 + 插件预取"]
+    end
+    subgraph "应用层"
+        CMD["commands.ts<br/>~50 个 / 命令"]
+        TOOLS["tools.ts + Tool.ts<br/>~40 个可组合工具"]
+    end
+    subgraph "调度层"
+        QE["QueryEngine.ts<br/>对话调度中枢"]
+        QUERY["query.ts<br/>LLM API 循环"]
+    end
+    subgraph "基础设施层"
+        STATE["AppStateStore.ts<br/>全局状态"]
+        BRIDGE["bridgeMain.ts<br/>IDE 桥接"]
+        SVC["services/<br/>API/OAuth/MCP/LSP"]
+    end
+    subgraph "UI 层"
+        UI["components/ + ink/<br/>React+Ink 终端渲染"]
+    end
+
+    MAIN --> INIT
+    MAIN --> SETUP
+    MAIN --> CMD
+    MAIN --> TOOLS
+    MAIN --> QE
+    CMD --> QE
+    TOOLS --> QE
+    QE --> QUERY
+    QE --> STATE
+    QUERY --> SVC
+    MAIN --> BRIDGE
+    MAIN --> UI
+    UI --> STATE
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 双轨设计 -->
+        <div id="arch-dual-reason" class="reveal">
+          <h3 class="content-h3">2.2 为什么选择"命令 + 工具"双轨设计？</h3>
+          <p class="content-p">
+            这个设计决策体现了一个深刻的工程洞察：<strong>用户意图与模型能力具有本质不同的安全边界</strong>。
+          </p>
+
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th>命令（用户层）</th>
+                <th>工具（模型层）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>调用者</td>
+                <td>人类用户（<strong>可信</strong>）</td>
+                <td>Claude 模型（<strong>需授权</strong>）</td>
+              </tr>
+              <tr>
+                <td>安全检查</td>
+                <td>可用性过滤、订阅状态</td>
+                <td>权限系统、危险模式检测</td>
+              </tr>
+              <tr>
+                <td>执行时机</td>
+                <td>即时、同步响应</td>
+                <td>异步、在对话循环中</td>
+              </tr>
+              <tr>
+                <td>典型用例</td>
+                <td><code>/commit</code> 提交代码</td>
+                <td><code>BashTool</code> 执行命令</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>⚠️</span> 如果合并会怎样？</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              如果将两者合并为一套机制，就必须在每个操作前判断"谁在调用"，这会导致安全边界模糊。
+              <strong>双轨设计将信任层次天然分离</strong>，是整个安全架构的根基。
+            </p>
+          </div>
+        </div>
+
+        <!-- 2.3 QueryEngine 哲学 -->
+        <div id="arch-qe-design" class="reveal">
+          <h3 class="content-h3">2.3 QueryEngine 的设计哲学：会话即对象</h3>
+          <p class="content-p">
+            传统 AI 应用往往将对话做成无状态函数调用。Claude Code 选择了<strong>面向对象设计</strong>：
+            每次对话对应一个 <code>QueryEngine</code> 实例。
+          </p>
+
+          <div class="callout callout-tip" style="margin-bottom: var(--space-lg);">
+            <div class="callout-title"><span>✅</span> 面向对象的优势</div>
+            <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-sm);">
+              <li>• <strong>状态内聚</strong>：消息历史、文件缓存、用量统计都在一个对象内，不需要全局变量</li>
+              <li>• <strong>生命周期清晰</strong>：构造即初始化，多次 <code>submitMessage()</code> 保持同一上下文</li>
+              <li>• <strong>可测试</strong>：无全局副作用，易于单元测试</li>
+            </ul>
+          </div>
+
+          <!-- QueryEngine 类图 -->
+          <div class="mermaid-container">
+            <div class="mermaid">
+classDiagram
+    class QueryEngine {
+        -config: QueryEngineConfig
+        -mutableMessages: Message[]
+        -abortController: AbortController
+        -permissionDenials: SDKPermissionDenial[]
+        -totalUsage: NonNullableUsage
+        -readFileState: FileStateCache
+        -discoveredSkillNames: Set~string~
+        +submitMessage(prompt) AsyncGenerator
+        +interrupt() void
+        +getMessages() Message[]
+        +getSessionId() string
+    }
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.4 技术选型 -->
+        <div id="arch-tech" class="reveal">
+          <h3 class="content-h3">2.4 技术选型决策</h3>
+
+          <div class="grid-2" style="gap: var(--space-lg); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md);">
+                <span style="font-size: 28px;">🚀</span>
+                <strong style="font-size: var(--font-size-md);">Bun vs Node.js</strong>
+              </div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• <code>feature()</code> API 支持编译期死代码消除（DCE）</li>
+                <li>• 启动速度更快（CLI 工具至关重要）</li>
+                <li>• 原生支持 TypeScript，无需 transpile</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md);">
+                <span style="font-size: 28px;">⚛️</span>
+                <strong style="font-size: var(--font-size-md);">React + Ink vs console.log</strong>
+              </div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• 声明式 UI 范式，支持复杂动态界面</li>
+                <li>• 虚拟滚动处理长消息列表</li>
+                <li>• 与 React 生态无缝集成（Context/Hooks）</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md);">
+                <span style="font-size: 28px;">🔧</span>
+                <strong style="font-size: var(--font-size-md);">Commander.js + Zod</strong>
+              </div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• Commander.js：成熟的 CLI 参数解析，支持子命令</li>
+                <li>• Zod：运行时类型验证，工具输入安全校验</li>
+                <li>• 类型化选项，开发体验优秀</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md);">
+                <span style="font-size: 28px;">🔍</span>
+                <strong style="font-size: var(--font-size-md);">Anthropic SDK + MCP</strong>
+              </div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• Anthropic SDK 驱动模型调用，支持流式输出</li>
+                <li>• MCP 协议标准化外部工具集成</li>
+                <li>• LSP 协议接入代码理解能力</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §3 关键源码深度走查
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+          <p class="content-p">以下六段代码是理解整个架构的核心切入点，逐行拆解其设计意图。</p>
+        </div>
+
+        <!-- 3.1 main.tsx 并行预取 -->
+        <div id="code-main" class="reveal">
+          <h3 class="content-h3">3.1 main.tsx：启动入口的"并行预取"模式</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/main.tsx</code> 第 1–20 行<br/>
+            <strong>设计意图</strong>：在 import 完成之前，尽早触发耗时 I/O，实现并行优化。
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔥 Fire-and-Forget 模式</span>
+            <span class="pattern-badge">⚡ 并行预取</span>
+            <span class="pattern-badge">📈 启动优化</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/main.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="8,11,14"><code class="language-typescript">// 这些副作用必须在所有其他 import 之前运行：
+// 1. profileCheckpoint 在重型模块评估开始前标记入口
+// 2. startMdmRawRead 触发 MDM 子进程（plutil/reg query），
+//    使其与下方 ~135ms 的 import 并行运行
+// 3. startKeychainPrefetch 并行触发 macOS keychain 读取
+//    （OAuth + 旧版 API key），否则会在启动时顺序读取（每次 ~65ms）
+import { profileCheckpoint } from './utils/startupProfiler.js';
+
+profileCheckpoint('main_tsx_entry');  // ① 性能打点：入口时间戳
+
+import { startMdmRawRead } from './utils/settings/mdm/rawRead.js';
+startMdmRawRead();  // ② 立即启动 MDM 读取（非阻塞）
+
+import { startKeychainPrefetch } from './utils/secureStorage/keychainPrefetch.js';
+startKeychainPrefetch();  // ③ 立即启动 keychain 预取（非阻塞）</code></pre>
+          </div>
+
+          <!-- 逐行注释折叠面板 -->
+          <div class="accordion open" data-group="code-anno-main">
+            <div class="accordion-header" aria-expanded="true">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead>
+                    <tr><th>标记</th><th>代码</th><th>设计意图</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>①</td>
+                      <td>profileCheckpoint('main_tsx_entry')</td>
+                      <td>性能分析基准点，记录入口时间戳，测量模块加载开销</td>
+                    </tr>
+                    <tr>
+                      <td>②</td>
+                      <td>startMdmRawRead()</td>
+                      <td><strong>关键优化</strong>：MDM 读取涉及子进程调用（plutil），提前触发使其与剩余 import（~135ms）并行运行</td>
+                    </tr>
+                    <tr>
+                      <td>③</td>
+                      <td>startKeychainPrefetch()</td>
+                      <td>每次 macOS keychain 读取需 ~65ms，两次串行就是 130ms，并行化消除等待，节省约 100–200ms 启动时间</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="callout callout-tip" style="margin-top: var(--space-md); margin-bottom: 0;">
+                  <div class="callout-title"><span>💡</span> 设计原则</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                    <strong>关键路径上的 I/O 操作应尽早触发</strong>（Fire-and-forget + 后续 await）。
+                    这是 Node.js/Bun 单线程模型下的标准优化范式。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 设计点评 -->
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 并行预取的启动优化</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：CLI 工具最怕"慢"——用户敲一个命令，等了 0.5 秒才有反应，就感觉很卡。这里的骚操作是：在加载其他代码的同时，提前去读取钥匙串和企业配置，两件事并行跑，等代码加载完，I/O 也差不多完成了，用户感知到的等待时间大幅缩短。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：先把所有模块 import 完，再去读钥匙串，再读企业配置——这两次 I/O 是串行的，每次各花 ~65ms，加起来就是额外的 130ms+。对于一个 CLI 工具，这个差距用户是能明显感受到的。就像超市收银，你可以边扫码边装袋，而不是等全部扫完再开始装——节省的时间看起来不多，但真的很值。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 commands.ts 特性标志 -->
+        <div id="code-commands" class="reveal">
+          <h3 class="content-h3">3.2 commands.ts：特性标志驱动的条件导入</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/commands.ts</code> 第 59–120 行<br/>
+            <strong>设计意图</strong>：在编译期（而非运行期）裁剪功能，实现零成本的死代码消除。
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">✂️ 死代码消除（DCE）</span>
+            <span class="pattern-badge">🚩 特性标志</span>
+            <span class="pattern-badge">📦 包体积优化</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/commands.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="4,5,8,12,15,19"><code class="language-typescript">import { feature } from 'bun:bundle'
+
+// 死代码消除：条件导入
+const proactive =
+  feature('PROACTIVE') || feature('KAIROS')
+    ? require('./commands/proactive.js').default
+    : null  // ① 标志为 false 时，打包工具直接消除此模块
+
+const bridge = feature('BRIDGE_MODE')
+  ? require('./commands/bridge/index.js').default
+  : null  // ② IDE 桥接命令：仅在桥接模式下打包
+
+const voiceCommand = feature('VOICE_MODE')
+  ? require('./commands/voice/index.js').default
+  : null  // ③ 语音命令：仅在语音模式下打包
+
+const ultraplan = feature('ULTRAPLAN')
+  ? require('./commands/ultraplan.js').default
+  : null  // ④ 超级计划命令：实验性功能门控</code></pre>
+          </div>
+
+          <div class="accordion open" data-group="code-anno-commands">
+            <div class="accordion-header" aria-expanded="true">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead>
+                    <tr><th>标记</th><th>特性标志</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>①</td>
+                      <td>feature('PROACTIVE') || feature('KAIROS')</td>
+                      <td>Bun 编译期 API。当标志为 <code>false</code>，整个 <code>require()</code> 分支在打包产物中消失，实现零成本 DCE</td>
+                    </tr>
+                    <tr>
+                      <td>②</td>
+                      <td>feature('BRIDGE_MODE')</td>
+                      <td>控制 IDE 桥接命令。面向普通用户的发布版本无需暴露桥接控制命令</td>
+                    </tr>
+                    <tr>
+                      <td>③</td>
+                      <td>feature('VOICE_MODE')</td>
+                      <td>语音模式按需打包，使生产包体积最小化</td>
+                    </tr>
+                    <tr>
+                      <td>④</td>
+                      <td>feature('ULTRAPLAN')</td>
+                      <td>超级计划模式门控，实验性功能不影响主流用户</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="callout callout-idea" style="margin-top: var(--space-md); margin-bottom: 0;">
+                  <div class="callout-title"><span>🔮</span> 设计模式</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                    <strong>特性标志驱动的条件编译</strong>——在编译期（而非运行期）裁剪功能，
+                    比运行期 <code>if-else</code> 更彻底，没有任何运行时开销。这是 Bun 特有的超能力。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 设计点评 -->
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 编译期特性标志的极简门控</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：你想关掉一个实验性功能，最彻底的方式不是运行时 <code>if-else</code>，而是让那段代码根本不出现在发布包里。<code>feature('VOICE_MODE')</code> 为 <code>false</code> 时，语音模块的代码就跟它不存在一样——包体积更小，攻击面更窄，用户连代码都看不到。而且这一切在写代码时和写普通条件判断没什么两样，零学习成本。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：用运行时 <code>if-else</code> 门控，语音模块、桥接模块、超级计划模块的代码全都打包进去了，只是"跑不到"。这意味着：用户可以反编译产物看到内部实验功能的实现细节，安全审计要覆盖所有分支，包体积也白白胖了一圈。一个面向普通用户的轻量 CLI，却带着一堆对他毫无用处的企业/实验代码——就像你买了一辆家用车，引擎盖下却藏着一台赛车发动机的全套配件，没用还占地方。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 Tool.ts 类型约束 -->
+        <div id="code-tool" class="reveal">
+          <h3 class="content-h3">3.3 Tool.ts：工具接口的类型约束设计</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/Tool.ts</code> 第 122–148 行<br/>
+            <strong>设计意图</strong>：通过 DeepImmutable 在编译期保障权限上下文不可篡改。
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔒 DeepImmutable</span>
+            <span class="pattern-badge">🏭 工厂方法模式</span>
+            <span class="pattern-badge">🛡️ 编译期安全</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/Tool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,5,6,7,8,9,10,11,12,13,16,17,18,19,20,21,22,23,24"><code class="language-typescript">// 应用 DeepImmutable 包装，防止运行时意外修改
+export type ToolPermissionContext = DeepImmutable&lt;{
+  mode: PermissionMode                    // ① 当前权限模式
+  additionalWorkingDirectories: Map&lt;string, AdditionalWorkingDirectory&gt;
+  alwaysAllowRules: ToolPermissionRulesBySource   // ② 多源允许规则
+  alwaysDenyRules: ToolPermissionRulesBySource    // ③ 多源拒绝规则
+  alwaysAskRules: ToolPermissionRulesBySource     // ④ 多源询问规则
+  isBypassPermissionsModeAvailable: boolean       // ⑤ 是否可绕过
+  isAutoModeAvailable?: boolean                   // ⑥ 是否有自动模式
+  strippedDangerousRules?: ToolPermissionRulesBySource  // ⑦ 已剥离的危险规则
+  shouldAvoidPermissionPrompts?: boolean   // ⑧ 无头代理：自动拒绝提示
+  awaitAutomatedChecksBeforeDialog?: boolean  // ⑨ 协调者工作线程专用
+  prePlanMode?: PermissionMode             // ⑩ 进入计划模式前的模式快照
+}&gt;
+
+// 空权限上下文工厂函数：类型安全的默认值
+export const getEmptyToolPermissionContext: () =&gt; ToolPermissionContext =
+  () =&gt; ({
+    mode: 'default',
+    additionalWorkingDirectories: new Map(),
+    alwaysAllowRules: {},
+    alwaysDenyRules: {},
+    alwaysAskRules: {},
+    isBypassPermissionsModeAvailable: false,
+  })</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-tool">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead>
+                    <tr><th>标记</th><th>字段</th><th>设计意图</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>①</td><td>mode: PermissionMode</td><td>当前活跃的权限模式（default/plan/bypassPermissions 等）</td></tr>
+                    <tr><td>②③④</td><td>alwaysAllow/Deny/AskRules</td><td>按<strong>来源</strong>组织的规则集合（用户设置、项目设置、CLI 参数等）</td></tr>
+                    <tr><td>⑦</td><td>strippedDangerousRules</td><td>进入自动模式时被剥离的危险规则备份，退出时恢复</td></tr>
+                    <tr><td>⑧</td><td>shouldAvoidPermissionPrompts</td><td>无头/后台代理无法显示交互界面，使用此标志自动拒绝所有需要人工确认的请求</td></tr>
+                    <tr><td>⑩</td><td>prePlanMode</td><td>进入计划模式前保存原模式，用于退出时恢复（状态快照）</td></tr>
+                  </tbody>
+                </table>
+                <div class="callout callout-info" style="margin-top: var(--space-md); margin-bottom: 0;">
+                  <div class="callout-title"><span>🛡️</span> 设计原则：双重安全保障</div>
+                  <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
+                    <li>• <strong>DeepImmutable</strong>：权限上下文一旦创建，不可在工具执行中被修改——防止工具通过副作用提升权限（安全原则）</li>
+                    <li>• <strong>单一真相来源</strong>：所有权限相关状态统一在此类型中，避免散落各处</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 设计点评 -->
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — <code>DeepImmutable&lt;T&gt;</code> 的安全性保障</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：工具代码在执行时拿到的权限上下文是"只读"的——你根本没有办法在工具内部悄悄把自己的权限从"需要询问"改成"直接允许"。这个限制是编译器强制的，不是靠开发者自觉遵守的。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：想象一个恶意（或写错了的）工具在运行时偷偷修改权限状态，把某个"需要用户确认"的操作改成"静默执行"——用户完全不知情，AI 就在后台删文件了。<code>DeepImmutable</code> 相当于把权限钥匙焊死在保险柜里，工具只能看，不能摸。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 QueryEngine 拒绝追踪 -->
+        <div id="code-qe" class="reveal">
+          <h3 class="content-h3">3.4 QueryEngine.ts：wrappedCanUseTool 的拒绝追踪</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/QueryEngine.ts</code> 第 243–271 行<br/>
+            <strong>设计意图</strong>：通过装饰器模式为权限检查添加拒绝追踪，不修改原始逻辑。
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🎨 装饰器模式</span>
+            <span class="pattern-badge">📊 权限审计</span>
+            <span class="pattern-badge">🔍 SDK 上报</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="8,9,10,11,14,15,16,17,18,19"><code class="language-typescript">// 包装 canUseTool 以追踪权限拒绝（用于 SDK 报告）
+const wrappedCanUseTool: CanUseToolFn = async (
+  tool,
+  input,
+  toolUseContext,
+  assistantMessage,
+  toolUseID,
+  forceDecision,
+) =&gt; {
+  // ① 调用原始权限检查函数
+  const result = await canUseTool(
+    tool, input, toolUseContext,
+    assistantMessage, toolUseID, forceDecision,
+  )
+
+  // ② 记录非允许决策（ask / deny）
+  if (result.behavior !== 'allow') {
+    this.permissionDenials.push({
+      tool_name: sdkCompatToolName(tool.name),  // ③ SDK 兼容的工具名
+      tool_use_id: toolUseID,
+      tool_input: input,
+    })
+  }
+
+  return result
+}</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-qe">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead>
+                    <tr><th>标记</th><th>代码</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>①</td><td>await canUseTool(...)</td><td>原始 <code>canUseTool</code> 来自 <code>useCanUseTool</code> 钩子，包含完整的权限决策链</td></tr>
+                    <tr><td>②</td><td>result.behavior !== 'allow'</td><td>任何非"允许"的结果（包括"询问"和"拒绝"）都被记录——"询问"也算拒绝，因为模型未被立即授权</td></tr>
+                    <tr><td>③</td><td>sdkCompatToolName(tool.name)</td><td>将内部工具名转换为 SDK 规范格式（如 MCP 工具名规范化），确保上报数据一致性</td></tr>
+                  </tbody>
+                </table>
+                <div class="callout callout-idea" style="margin-top: var(--space-md); margin-bottom: 0;">
+                  <div class="callout-title"><span>🎨</span> 装饰器模式的精髓</div>
+                  <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                    <code>wrappedCanUseTool</code> 在<strong>不修改原始函数</strong>的情况下，为其添加了"拒绝追踪"能力。
+                    这是权限审计的关键机制，也是装饰器模式在实际工程中的经典应用。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 设计点评 -->
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 装饰器模式的无侵入审计</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：权限检查逻辑和拒绝记录逻辑是两件独立的事，<code>wrappedCanUseTool</code> 把它们干净地分开了——原来的 <code>canUseTool</code> 只管"能不能用"，审计日志的事交给包装层处理，谁都不用知道对方的存在。这样既不改原始逻辑，又能静默地记下"AI 这次会话里想干什么、被挡了几次"，对将来的模型优化和企业合规都很有价值。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：要么直接在 <code>canUseTool</code> 里加记录逻辑（把权限决策和审计耦合在一起，以后维护是噩梦），要么每个调用点手动加记录（漏掉一处就是审计盲点）。装饰器的妙处就在于：你只需要在一个地方包一层，全局生效，不遗漏，不污染原始逻辑。就像给水管装一个流量计，水该怎么流还是怎么流，但每滴水都被记录了。
+            </p>
+          </div>
+        </div>
+        <!-- 3.5 tools.ts 工具注册 -->
+        <div id="code-tools" class="reveal">
+          <h3 class="content-h3">3.5 tools.ts：工具注册与去重</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/tools.ts</code> 第 1–53 行（精选）<br/>
+            <strong>设计意图</strong>：四种不同的导入策略，各有其适用场景和工程考量。
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📋 注册表模式</span>
+            <span class="pattern-badge">🔄 懒加载</span>
+            <span class="pattern-badge">🌳 DCE 优化</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/tools.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,3,4,5,8,9,10,11,13,14,15,16,17,18,20,21"><code class="language-typescript">// ① 静态导入：核心内置工具
+import { BashTool } from './tools/BashTool/BashTool.js'
+import { FileEditTool } from './tools/FileEditTool/FileEditTool.js'
+import { FileReadTool } from './tools/FileReadTool/FileReadTool.js'
+import { GlobTool } from './tools/GlobTool/GlobTool.js'
+
+// ② 死代码消除：仅在特定用户类型下包含
+const REPLTool =
+  process.env.USER_TYPE === 'ant'
+    ? require('./tools/REPLTool/REPLTool.js').REPLTool
+    : null  // 外部用户看不到此工具
+
+// ③ 特性标志门控：调度工具
+const cronTools = feature('AGENT_TRIGGERS')
+  ? [
+      require('./tools/ScheduleCronTool/CronCreateTool.js').CronCreateTool,
+      require('./tools/ScheduleCronTool/CronDeleteTool.js').CronDeleteTool,
+      require('./tools/ScheduleCronTool/CronListTool.js').CronListTool,
+    ]
+  : []  // 未启用时为空数组，不引入这些模块
+
+// ④ 懒加载（打破循环依赖）
+const getTeamCreateTool = () =&gt;
+  require('./tools/TeamCreateTool/TeamCreateTool.js').TeamCreateTool</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-tools">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 四种导入策略对比（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="compare-table">
+                  <thead>
+                    <tr><th>模式</th><th>代码示例</th><th>使用理由</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><span class="tag tag-blue">静态导入</span></td>
+                      <td><code>import { BashTool }</code></td>
+                      <td>核心工具，必须存在，早期绑定，TypeScript 类型推断最佳</td>
+                    </tr>
+                    <tr>
+                      <td><span class="tag tag-orange">环境变量门控</span></td>
+                      <td><code>process.env.USER_TYPE === 'ant'</code></td>
+                      <td>内部工具（REPL）不对外开放，区分内外部用户</td>
+                    </tr>
+                    <tr>
+                      <td><span class="tag tag-purple">特性标志门控</span></td>
+                      <td><code>feature('AGENT_TRIGGERS')</code></td>
+                      <td>实验性工具的 DCE 控制，编译期裁剪</td>
+                    </tr>
+                    <tr>
+                      <td><span class="tag tag-green">懒加载</span></td>
+                      <td><code>const getTool = () =&gt; require(...)</code></td>
+                      <td>打破循环依赖（tools.ts → TeamCreateTool → ... → tools.ts）</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 设计点评 -->
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 懒加载打破循环依赖</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：循环依赖是 JS 模块里的"鸡生蛋蛋生鸡"问题——A 模块加载时需要 B，B 加载时又需要 A，结果谁也没初始化完，程序直接崩。把 <code>require()</code> 包进函数里，相当于"先别急着找 B，等我真的要用的时候再去拿"，完全绕开了这个死结。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：要么重构模块结构（把有循环依赖的代码拆到第三个文件里，工程量大），要么程序启动时报 <code>undefined is not a constructor</code> 这种让人摸不着头脑的错误，排查起来非常费劲。这个一行代码的小技巧，省掉了一次大规模重构。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 QueryEngine AsyncGenerator 流式架构 -->
+        <div id="code-async-gen" class="reveal">
+          <h3 class="content-h3">3.6 QueryEngine.ts：AsyncGenerator 流式架构</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/QueryEngine.ts</code> 第 199–262 行<br/>
+            <strong>设计意图</strong>：异步生成器实现零缓冲流式输出，三层委托管道保证实时推送。
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🌊 AsyncGenerator</span>
+            <span class="pattern-badge">⚡ 流式输出</span>
+            <span class="pattern-badge">🔗 零缓冲管道</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="7,8,9,19,20,21,22,23,24,25,26,29,30"><code class="language-typescript">// 每次对话一个 QueryEngine 实例，状态跨轮次持久化
+export class QueryEngine {
+  private mutableMessages: Message[]       // 跨轮次消息历史
+  private permissionDenials: SDKPermissionDenial[]
+  private totalUsage: NonNullableUsage
+  private readFileState: FileStateCache
+
+  // ① submitMessage 是异步生成器——调用者用 for await 逐条消费消息
+  async *submitMessage(
+    prompt: string | ContentBlockParam[],
+    options?: { uuid?: string; isMeta?: boolean },
+  ): AsyncGenerator&lt;SDKMessage, void, unknown&gt; {
+    // ② 解构配置（工具、命令、权限、模型等）
+    const { cwd, commands, tools, canUseTool, ... } = this.config
+
+    this.discoveredSkillNames.clear()
+    setCwd(cwd)
+
+    // ③ 包装 canUseTool，插入权限拒绝追踪（装饰器模式）
+    const wrappedCanUseTool: CanUseToolFn = async (...args) =&gt; {
+      const result = await canUseTool(...args)
+      if (result.behavior !== 'allow') {
+        this.permissionDenials.push({ tool_name: ..., tool_use_id: ..., tool_input: ... })
+      }
+      return result
+    }
+
+    // ④ 构建系统提示、用户上下文
+    // ⑤ yield* 委托给 query()——三层嵌套 AsyncGenerator 全链路流式处理
+    //    submitMessage → query() → StreamingToolExecutor
+    yield* query({
+      messages: this.mutableMessages,
+      tools, commands, canUseTool: wrappedCanUseTool,
+      systemPrompt, userContext, ...
+    })
+
+    // ⑥ 完成后更新累计用量、持久化会话
+    this.totalUsage = accumulateUsage(this.totalUsage, ...)
+  }
+}</code></pre>
+          </div>
+
+          <div class="accordion open" data-group="code-anno-async-gen">
+            <div class="accordion-header" aria-expanded="true">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead>
+                    <tr><th>标记</th><th>代码</th><th>说明</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>①</td>
+                      <td>async *submitMessage()</td>
+                      <td>异步生成器签名。调用者使用 <code>for await</code> 逐条消费，每产出一条 <code>SDKMessage</code> 就立即推送给 UI 层渲染，无需等待整个对话循环结束</td>
+                    </tr>
+                    <tr>
+                      <td>②</td>
+                      <td>const { cwd, commands, ... } = this.config</td>
+                      <td>每次 <code>submitMessage</code> 调用解构同一份 <code>this.config</code>，多轮对话共享工具列表、权限函数等不变的配置，而 <code>this.mutableMessages</code> 在轮次间累积，实现<strong>跨轮次上下文持久化</strong></td>
+                    </tr>
+                    <tr>
+                      <td>⑤</td>
+                      <td>yield* query(...)</td>
+                      <td><code>yield*</code> 委托：<code>submitMessage → query() → StreamingToolExecutor</code> 构成三层嵌套的异步生成器管道。底层流式 API 的每一个 token/事件，无需缓冲直接透传到最顶层调用者——<strong>零缓冲流式处理</strong>的标准实现方式</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 设计点评 -->
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — AsyncGenerator 的流式架构</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：你发一个问题，Claude 的回答是"一个字一个字往外蹦"的感觉，而不是等它全想完再一口气全吐出来。这对用户体验的影响是巨大的——你能感知到 AI 在实时思考，而不是对着空白屏幕干等几秒。三层 <code>yield*</code> 委托让整个调用链零缓冲，底层 API 产出一个 token，顶层 UI 立刻拿到并渲染。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：换成普通异步函数，必须等模型把完整回答算完才能返回。一个涉及多步工具调用的复杂请求可能要等 10-30 秒，你面对的就是一个黑屏加一个光标。这种体验差距就像点外卖时"实时看到骑手在哪"和"没有任何信息，不知道有没有出发"的区别。
+            </p>
+          </div>
+        </div>
+      </section>
+      <!-- ══════════════════════════════════════
+           §4 Harness Engineering
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+          <p class="content-p">
+            从第01课的源码分析出发，提炼 <strong>Harness Engineering（驾驭工程）</strong> 的核心思想，
+            并探讨这些架构决策对构建自己的大模型应用有哪些可迁移的启发。
+          </p>
+        </div>
+
+        <!-- ── 4.1 Harness Engineering 视角 ── -->
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">🏗️ 4.1 Harness Engineering 视角</h3>
+          <p class="content-p">
+            <strong>Harness Engineering（驾驭工程）</strong> 是指：在强大但难以精确控制的 AI 模型之上，
+            构建一套工程化的"驾驭层"（Harness），通过约束、增强和编排来放大模型能力，同时保证安全边界。
+            Claude Code 是这一理念的教科书级实现。
+          </p>
+
+          <div class="callout callout-info reveal">
+            <div class="callout-title">
+              <span>🔗</span> Claude Code 作为"驾驭层"的四个维度
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); margin-top: var(--space-md);">
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-blue); margin-bottom: 6px;">⚙️ 结构化指令</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  命令系统将用户的自然语言意图（"帮我提交"）转化为结构化的 QueryEngine 调用，为模型提供精确的上下文边界。
+                </div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-green); margin-bottom: 6px;">🛠️ 能力赋予</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  工具系统（BashTool、FileReadTool 等）是 Harness 向模型"开口子"的机制——精确控制模型能触达哪些现实世界的能力。
+                </div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-orange); margin-bottom: 6px;">🛡️ 行为约束</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  权限系统（DeepImmutable 上下文、alwaysAllow/Deny/Ask 规则）是 Harness 的"缰绳"，让 AI 行为在可预期的边界内运行。
+                </div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-purple); margin-bottom: 6px;">🔄 思考-行动循环</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  QueryEngine 编排"思考（LLM）→ 行动（tool_use）→ 观察（工具结果）→ 再思考"的完整循环，即 ReAct 范式的工程实现。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip reveal" style="margin-top: var(--space-lg);">
+            <div class="callout-title">
+              <span>💡</span> 双轨设计体现的 Harness 哲学
+            </div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>命令（用户直接控制）+ 工具（AI 自主操作）</strong> 的双轨设计，精确体现了 Harness Engineering 的本质：
+              <em>不是限制 AI，而是为 AI 的能力找到合适的"出口"。</em>
+            </p>
+            <ul style="margin-top: var(--space-sm); padding-left: var(--space-lg); font-size: var(--font-size-sm); color: var(--text-secondary);">
+              <li style="margin-bottom: 6px;">命令层给用户提供了"意图入口"——用户知道自己在做什么</li>
+              <li style="margin-bottom: 6px;">工具层给 AI 提供了"能力出口"——AI 的每个动作都有明确的权限控制</li>
+              <li>两者通过 QueryEngine 汇聚，形成完整的"人机协作闭环"</li>
+            </ul>
+          </div>
+
+          <blockquote style="border-left: 4px solid var(--accent-purple); padding: var(--space-md) var(--space-lg); background: #faf5ff; border-radius: 0 var(--radius-md) var(--radius-md) 0; margin: var(--space-lg) 0; font-style: italic; color: var(--text-secondary);">
+            "Harness 的艺术在于：给 AI 足够的空间发挥创造力，同时确保每一步都在人类可理解和可控的范围内。"
+            <br/><span style="font-style: normal; font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary);">— Claude Code 架构的隐含设计原则</span>
+          </blockquote>
+        </div>
+
+        <!-- ── 4.2 大模型应用启发 ── -->
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">💡 4.2 对大模型应用的启发</h3>
+          <p class="content-p">
+            从 Claude Code 的架构设计中，可以提炼出 5 条构建大模型应用的核心原则。
+          </p>
+
+          <!-- 启发1 -->
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🏛️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">
+                  启发 1：分层架构的必要性
+                </h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">
+                  <strong>不要让用户直接和裸 LLM 对话。</strong> Claude Code 的七层架构告诉我们：中间层不是累赘，而是价值所在。
+                </p>
+                <div style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-sm) var(--space-md); font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <strong>实践建议：</strong> 在你的 AI 应用中设计明确的"意图层"（用户输入解析）、"执行层"（LLM 调用 + 工具）和"输出层"（结果格式化），而不是一个巨型的 prompt 字符串拼接。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 启发2 -->
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔧</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">
+                  启发 2：工具编排模式（Tool Pattern）
+                </h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">
+                  Claude Code 的 <code>Tool.ts</code> 接口设计提供了一个可复用的模式：<strong>每个工具声明自己的名称、输入 schema、权限需求和执行逻辑</strong>。这使得工具可以独立开发、独立测试、按需组合。
+                </p>
+                <div style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-sm) var(--space-md); font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <strong>实践建议：</strong> 用结构化的 Tool 接口（名称 + JSON Schema 输入 + 描述）替代在 prompt 中描述"你可以调用某个函数"。让 LLM 通过 function calling 而不是文本模拟来调用工具。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 启发3 -->
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🛡️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">
+                  启发 3：安全边界的多层防御
+                </h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">
+                  Claude Code 的权限系统有三道防线：<strong>类型系统（DeepImmutable）→ 规则引擎（Allow/Deny/Ask）→ 人工确认（权限弹窗）</strong>。这种纵深防御思想同样适用于你的 AI 产品。
+                </p>
+                <div style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-sm) var(--space-md); font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <strong>实践建议：</strong> 对 AI 可执行的每个危险操作（发邮件、删文件、调接口），设计"静默执行/告知执行/询问确认"三级策略，并在设计时就确定每个工具属于哪一级。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 启发4 -->
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-cyan);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📊</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">
+                  启发 4：状态管理的"对象化"思维
+                </h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">
+                  QueryEngine 把"一次会话"封装成对象，而不是无状态函数。这种设计让消息历史、文件缓存、token 用量统计自然地聚合在一起，避免了全局变量地狱。
+                </p>
+                <div style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-sm) var(--space-md); font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <strong>实践建议：</strong> 在你的 AI 应用中，为每个"对话会话"维护一个结构化的 Session 对象，包含：对话历史、累计 token 用量、当前执行工具、用户偏好配置——而不是把这些散落在各个函数参数里。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 启发5 -->
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-purple);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔌</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">
+                  启发 5：可扩展性的"注册表"设计
+                </h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">
+                  <code>commands.ts</code> 和 <code>tools.ts</code> 本质上是两个注册表。新增能力只需"注册"，不需要修改核心调度逻辑。这让 Claude Code 能用插件/技能系统持续扩展，而不因为每次新增功能就重写整个架构。
+                </p>
+                <div style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-sm) var(--space-md); font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <strong>实践建议：</strong> 在设计 AI 应用时，从第一天就把"工具注册表"和"业务逻辑"分离。工具（能力）应该可以独立添加、删除和版本管理，而不需要修改 AI 调度核心。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 总结 callout -->
+          <div class="callout callout-idea reveal" style="margin-top: var(--space-xl);">
+            <div class="callout-title">
+              <span>🌟</span> Harness Engineering 的核心信念
+            </div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              大模型本身是"力量"，Harness 是"方向"。优秀的 AI 工程师不是在调 prompt，而是在设计
+              <strong>约束（让 AI 做对的事）、赋能（让 AI 有足够的工具）、编排（让 AI 以正确的节奏工作）</strong>
+              这三者的完美平衡。Claude Code 的架构，正是这一哲学的最佳注脚。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §8 思考题与进阶方向
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+          <p class="content-p">深入思考以下问题，帮助你检验对架构的理解深度。</p>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：为什么 QueryEngine 选择类而不是函数？如果改成函数 + 闭包，会有哪些利弊？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>QueryEngine</code> 需要在多次 <code>submitMessage()</code> 调用之间共享 <code>mutableMessages</code>（消息历史）、<code>totalUsage</code>（token 用量）、<code>readFileState</code>（文件缓存）等多份状态，用类封装可以让这些状态天然内聚在一个实例里，职责边界清晰。如果改成函数 + 闭包，从功能上完全可行，但闭包变量散落在函数作用域中，随着状态增多代码会越来越难追踪；同时外部无法通过 <code>instanceof</code> 或类型系统区分不同的"会话实例"，类型推断能力会退化。类设计还带来了 <code>getMessages()</code>、<code>getSessionId()</code> 等公开接口，闭包版本要做到同等的封装性，反而需要手动返回一个对象——本质上还是在模拟类。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：<code>feature()</code> 与运行时 <code>if-else</code> 的本质区别是什么？对包体积、安全性、调试性各有什么影响？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>feature()</code> 是 Bun 的<strong>编译期 API</strong>，当标志为 <code>false</code> 时，整个被门控的代码分支在打包时直接从产物中消失（死代码消除，DCE），运行时根本不存在这段代码；而运行时 <code>if-else</code> 的两个分支都会被打包进去，只是执行时选一条走。包体积上，<code>feature()</code> 可以将内部工具（如 <code>REPLTool</code>）、实验性命令（如 <code>ultraplan</code>）完全从外部用户的安装包里剔除，降低攻击面；安全性上，一个不存在于包里的模块自然无法被逆向或利用，而 <code>if-else</code> 门控的代码仍然存在于发布产物中，只是"跑不到"而已。调试性上，<code>feature()</code> 的副作用是：你无法在生产包里动态开启一个被 DCE 掉的功能，必须重新构建，这在紧急排查时会增加一步门槛。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：命令系统的 <code>REMOTE_SAFE_COMMANDS</code> 白名单机制解决了什么安全问题？如果不存在这个机制，远程执行时会有什么风险？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>REMOTE_SAFE_COMMANDS</code> 白名单的核心是：在远程/无头（headless）模式下，只允许运行经过审核的命令子集，拒绝其余所有命令。这解决的是<strong>远程代码执行越权</strong>问题——当 Claude Code 作为后台服务接受远程调用时，调用方可能是自动化脚本或不可信网络请求，如果不加限制，攻击者可以通过构造特定请求触发本地高危命令（如清除配置、执行任意 Shell 脚本等）。如果没有这个机制，任何能访问服务端点的调用方都可以调用全部 ~50 个命令，相当于把本机的完整权限暴露给了外部；而有了白名单，即使服务被滥用，能造成的损害也被严格限定在安全命令的范围内，做到了"最小权限原则"。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：<code>wrappedCanUseTool</code> 记录的权限拒绝数据最终用在哪里？思考 SDK 报告的使用场景。</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>wrappedCanUseTool</code> 将每次非"allow"的决策（包括"询问"和"拒绝"）以 <code>{tool_name, tool_use_id, tool_input}</code> 的结构追加到 <code>this.permissionDenials</code> 数组。这份数据在会话结束后会通过 <code>sdkCompatToolName()</code> 规范化工具名，最终上报给 Claude SDK 的遥测/报告层，用途主要有两个：一是<strong>模型反馈</strong>，让 Anthropic 了解哪些工具调用在实际使用中频繁被拒绝，从而优化模型的工具调用策略；二是<strong>审计日志</strong>，企业用户可以通过 SDK 报告回溯"AI 在这次会话里尝试做了什么、被拦截了多少次"，满足合规和安全审计的需求。这也是 <code>wrappedCanUseTool</code> 使用装饰器模式的原因——原始权限检查逻辑不需要知道审计的存在，关注点分离。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 进阶方向 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 深入阅读</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                <strong>src/query.ts</strong> — 了解 LLM API 循环的完整实现，包括上下文压缩、流式工具执行器
+              </p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 扩展实践</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                尝试为现有工具添加一个 <code>feature()</code> 门控，观察打包产物的变化
+              </p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 架构探索</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                阅读 <strong>src/coordinator/coordinatorMode.ts</strong>，了解多代理协调模式如何在此架构上构建
+              </p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔌</span> 桥接层</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                阅读 <strong>src/bridge/bridgeMain.ts</strong>，了解 IDE 集成的会话生命周期管理
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">
+              📌 本课小结
+            </h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">
+              Claude Code 的全景架构是一个教科书级的模块化设计范例：
+            </p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>分层清晰</strong>：入口 → 初始化 → 应用（命令+工具）→ 调度（QueryEngine）→ 状态 → UI</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>安全前置</strong>：权限上下文使用 <code>DeepImmutable</code> 确保不可篡改</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>性能优先</strong>：并行预取、特性标志 DCE、懒加载三大优化手段</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>双轨设计</strong>：命令（用户层）与工具（模型层）的分离是安全架构的根基</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           课程导航页脚
+      ══════════════════════════════════════ -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <span class="nav-prev" style="opacity: 0.4; pointer-events: none; cursor: default;">
+          ← 无上一课
+        </span>
+
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+        <a href="02.html" class="nav-next">
+          下一课：启动流程与初始化 →
+        </a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     页脚
+═══════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="02.html">下一课 →</a>
+      </nav>
+
+      <p class="footer-copy">
+        第01课 · 全景架构解析 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<!-- 公共 JS -->
+<script src="../js/main.js"></script>
+
+<!-- 目录高亮 scrollspy -->
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

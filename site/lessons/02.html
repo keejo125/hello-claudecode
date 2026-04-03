@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第02课：启动流程与初始化机制 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 从命令行启动到交互就绪的7个阶段，理解并行预取优化、特性标志系统与安全门控机制。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    /* ── 课程页面专属布局 ─── */
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    /* ── 侧边栏目录 ─── */
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    /* ── 主内容区 ─── */
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    /* ── 章节容器 ─── */
+    .content-section {
+      margin-bottom: var(--space-3xl);
+    }
+
+    .content-section:last-child { margin-bottom: 0; }
+
+    /* ── 架构层级表格 ─── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── 层级对比表 ─── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    /* ── 代码注释解析表 ─── */
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    /* ── 学习目标清单 ─── */
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    /* ── 课程导航按钮 ─── */
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    /* ── 响应式 ─── */
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    /* ── 内联 code ─── */
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* ── 强调文字 ─── */
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    /* ── 节内容标题 ─── */
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    /* ── 进度条颜色 ─── */
+    #progress-bar { background: var(--gradient-accent); }
+  </style>
+</head>
+<body>
+
+<!-- 顶部进度条 -->
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     导航栏
+═══════════════════════════════════════════════════════════ -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     课程 Hero 区域
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-header">
+  <div class="container">
+    <!-- 面包屑 -->
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-blue">第一阶段 · 架构认知</span>
+      <span class="sep">/</span>
+      <span>第02课</span>
+    </nav>
+
+    <!-- 课程编号 + 标题 -->
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 02 · PHASE 01</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      启动流程与<br/>
+      <span class="gradient-text">初始化机制</span>
+    </h1>
+
+    <!-- 元数据 -->
+    <div class="lesson-meta">
+      <span class="tag tag-blue">第一阶段 · 架构认知</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐ 难度中等</span>
+      <span class="tag tag-green">7 阶段启动 · 并行预取</span>
+    </div>
+
+    <!-- 学习目标 -->
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>描述 Claude Code 从命令行启动到"交互就绪"的完整生命周期（7 个阶段）</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>解释"并行预取"优化策略的实现原理与性能收益</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>理解特性标志（Feature Flags）系统的架构与优先级规则</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>分析 <code>setup.ts</code> 中工作树、钩子、插件预取的初始化顺序及其设计依据</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>识别启动流程中的"安全门控"机制（调试检测、沙箱验证、Root 检测）</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     主体布局：侧边栏 + 内容
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <!-- ── 侧边栏目录 ────────────────────── -->
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-phases">1.1 启动阶段划分</a></div>
+        <div class="toc-item sub"><a href="#concept-parallel">1.2 并行预取 vs 串行</a></div>
+        <div class="toc-item sub"><a href="#concept-flags">1.3 特性标志三种模式</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-sequence">2.1 启动序列全景图</a></div>
+        <div class="toc-item sub"><a href="#arch-io">2.2 为何在 import 前触发 I/O</a></div>
+        <div class="toc-item sub"><a href="#arch-setup">2.3 setup() 初始化顺序</a></div>
+        <div class="toc-item sub"><a href="#arch-growthbook">2.4 特性标志系统架构</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-prefetch">3.1 启动前三次先手布局</a></div>
+        <div class="toc-item sub"><a href="#code-debug">3.2 调试模式安全门控</a></div>
+        <div class="toc-item sub"><a href="#code-worktree">3.3 工作树创建流程</a></div>
+        <div class="toc-item sub"><a href="#code-sandbox">3.4 沙箱安全验证</a></div>
+        <div class="toc-item sub"><a href="#code-const">3.5 编译期常量技巧</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <!-- ── 主内容区 ────────────────────────────────── -->
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- ══════════════════════════════════════
+           §1 核心概念
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <!-- 1.1 启动阶段划分 -->
+        <div id="concept-phases" class="reveal">
+          <h3 class="content-h3">1.1 启动阶段划分</h3>
+          <p class="content-p">Claude Code 的启动过程可以分为 7 个清晰的阶段：</p>
+
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>阶段</th>
+                <th>时机</th>
+                <th>主要工作</th>
+                <th>关键文件</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tag tag-blue">① 预取触发</span></td>
+                <td>import 前</td>
+                <td>触发 MDM/keychain 并行读取</td>
+                <td><code>main.tsx</code> 顶部</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-cyan">② 模块加载</span></td>
+                <td>import 阶段</td>
+                <td>加载所有依赖模块（~135ms）</td>
+                <td><code>main.tsx</code> 全部 import</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-orange">③ 安全门控</span></td>
+                <td>import 后立即</td>
+                <td>调试模式检测、版本验证</td>
+                <td><code>main.tsx</code> L265-271</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-green">④ CLI 解析</span></td>
+                <td>Commander.js</td>
+                <td>解析命令行参数</td>
+                <td><code>main.tsx</code> Commander 部分</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-purple">⑤ 全局初始化</span></td>
+                <td><code>init()</code></td>
+                <td>配置加载、网络初始化、遥测</td>
+                <td><code>entrypoints/init.ts</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-blue">⑥ 会话设置</span></td>
+                <td><code>setup()</code></td>
+                <td>工作树、钩子、插件预取</td>
+                <td><code>setup.ts</code></td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-cyan">⑦ 渲染就绪</span></td>
+                <td><code>launchRepl()</code></td>
+                <td>启动 React+Ink REPL</td>
+                <td><code>replLauncher.tsx</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 1.2 并行预取 -->
+        <div id="concept-parallel" class="reveal">
+          <h3 class="content-h3">1.2 并行预取 vs. 串行读取</h3>
+          <p class="content-p"><strong>串行模式</strong>（传统 CLI）：</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">时序分析</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-plaintext">启动 → 读 MDM (~80ms) → 读 keychain (~65ms) → 开始工作
+总耗时 ≈ 145ms+
+
+并行预取模式（Claude Code）：
+启动 → [触发 MDM 读取] → 加载模块 (135ms) → 等待完成
+      [触发 keychain 读取] ↗
+总耗时 ≈ max(135ms, 80ms, 65ms) ≈ 135ms
+节省 ≈ 145ms - 135ms = ~10ms（实际效果更好）</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计哲学</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              <em>在等待成本不可避免时，将等待隐藏在其他必要工作的背后。</em>
+            </p>
+          </div>
+        </div>
+
+        <!-- 1.3 特性标志 -->
+        <div id="concept-flags" class="reveal">
+          <h3 class="content-h3">1.3 特性标志系统的三种读取模式</h3>
+
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>读取模式</th>
+                <th>函数名</th>
+                <th>适用场景</th>
+                <th>阻塞特性</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tag tag-green">缓存优先</span></td>
+                <td><code>getFeatureValue_CACHED_MAY_BE_STALE</code></td>
+                <td>启动路径、同步上下文</td>
+                <td>非阻塞，返回磁盘缓存</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-blue">缓存+刷新</span></td>
+                <td><code>getFeatureValue_CACHED_WITH_REFRESH</code></td>
+                <td>运行时权限检查</td>
+                <td>非阻塞，后台更新</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-orange">阻塞式</span></td>
+                <td><code>getDynamicConfig_BLOCKS_ON_INIT</code></td>
+                <td>非启动路径需最新值</td>
+                <td>阻塞，等待初始化</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §2 架构设计与设计思想
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <!-- 2.1 启动序列全景图 -->
+        <div id="arch-sequence" class="reveal">
+          <h3 class="content-h3">2.1 启动序列全景图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant OS as "操作系统"
+    participant Main as "main.tsx"
+    participant MDM as "MDM 设置(async)"
+    participant KC as "Keychain(async)"
+    participant Init as "entrypoints/init.ts"
+    participant Setup as "setup.ts"
+    participant GB as "GrowthBook特性标志"
+    participant REPL as "React+Ink REPL"
+
+    OS->>Main: 进程启动
+    Note over Main: profileCheckpoint('main_tsx_entry')
+    Main->>MDM: startMdmRawRead() fire-and-forget
+    Main->>KC: startKeychainPrefetch() fire-and-forget
+    Note over Main: 继续 ~135ms 的模块 import
+
+    Main->>Main: isBeingDebugged() 安全检测
+    Note over Main: 若检测到调试器 → process.exit(1)
+
+    Main->>Init: init()
+    Init->>MDM: ensureMdmSettingsLoaded() 等待完成
+    Init->>KC: ensureKeychainPrefetchCompleted() 等待完成
+    Init->>GB: initializeGrowthBook()
+    Init-->>Main: 配置 & 环境就绪
+
+    Main->>Setup: setup()
+    Note over Setup: setCwd() → hooks → worktree → plugins
+    Setup-->>Main: 会话环境就绪
+
+    Main->>REPL: launchRepl()
+    REPL-->>OS: 交互界面就绪
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 为何在 import 前触发 I/O -->
+        <div id="arch-io" class="reveal">
+          <h3 class="content-h3">2.2 为什么在 import 之前触发 I/O？</h3>
+          <p class="content-p">
+            这是本课最精妙的工程设计之一。JavaScript/TypeScript 的 <code>import</code> 语句在模块评估阶段是<strong>同步阻塞</strong>的——当解释器处理所有 import 时，主线程无法执行任何其他 JavaScript。
+          </p>
+          <p class="content-p">
+            但 <code>startMdmRawRead()</code> 和 <code>startKeychainPrefetch()</code> 的操作是<strong>系统级 I/O</strong>（进程创建、系统调用），它们在操作系统层面可以与 JavaScript 模块评估并行进行。
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">进程时间轴</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-plaintext">┌─────────────────────────────────────────────────────────────┐
+│                    进程时间轴                                 │
+├─────────────────────────────────────────────────────────────┤
+│ JS 线程:  [MDM触发][KC触发]──[~135ms 模块加载]──[等待MDM/KC]│
+│ 系统线程: ──────[MDM读取~80ms]──────                        │
+│ 系统线程: ──────[KC读取~65ms]────────                       │
+└─────────────────────────────────────────────────────────────┘</code></pre>
+          </div>
+        </div>
+
+        <!-- 2.3 setup() 初始化顺序 -->
+        <div id="arch-setup" class="reveal">
+          <h3 class="content-h3">2.3 setup() 的初始化顺序设计</h3>
+          <p class="content-p">
+            <code>setup()</code> 中的操作顺序不是随意的，而是精心设计的<strong>依赖拓扑排序</strong>：
+          </p>
+          <div class="mermaid-container">
+            <div class="mermaid">
+flowchart TD
+    A["① setCwd(cwd) 设置工作目录"] --> B["② captureHooksConfigSnapshot() 快照钩子配置"]
+    B --> C["③ initializeFileChangedWatcher(cwd) 文件变更监听"]
+    B --> D["④ worktree 创建（如需） 必须在 getCommands() 前"]
+    D --> E["⑤ 后台任务注册 attribution/sessionFileAccess"]
+    E --> F["⑥ void getCommands() 非阻塞预取命令列表"]
+    F --> G["⑦ initSinks() 连接分析 & 错误汇"]
+    G --> H["⑧ logEvent('tengu_started')"]
+    H --> I["⑨ bypassPermissions 安全验证"]
+            </div>
+          </div>
+
+          <div class="callout callout-info" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>📋</span> 顺序设计理由</div>
+            <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-sm);">
+              <li>• <code>setCwd()</code> 必须是第一步，因为所有钩子配置读取依赖正确的工作目录</li>
+              <li>• 钩子快照必须在文件监听器初始化前，确保监听器使用最新配置</li>
+              <li>• worktree 创建必须在 <code>getCommands()</code> 前，因为 worktree 会影响可用命令</li>
+              <li>• <code>logEvent('tengu_started')</code> 在分析汇连接后立即触发，是会话成功率的分母基准</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 2.4 特性标志系统架构 -->
+        <div id="arch-growthbook" class="reveal">
+          <h3 class="content-h3">2.4 特性标志系统架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "配置来源（优先级从高到低）"
+        ENV["环境变量覆盖 CLAUDE_INTERNAL_FC_OVERRIDES"]
+        POL["策略设置 企业 MDM 策略"]
+        FLAG["命令行标志 --flag-settings-path"]
+        USR["用户设置 ~/.claude.json"]
+        PRJ["项目设置 .claude/settings.json"]
+        LOC["本地设置 .claude/settings.local.json"]
+    end
+
+    subgraph "GrowthBook 客户端"
+        MEM["内存映射（进程内）"]
+        DISK["磁盘缓存（跨进程）"]
+        REMOTE["远程服务 remoteEval"]
+    end
+
+    ENV --> MEM
+    POL --> DISK
+    FLAG --> DISK
+    USR --> DISK
+    PRJ --> DISK
+    LOC --> DISK
+    DISK --> MEM
+    REMOTE --> MEM
+    REMOTE --> DISK
+
+    subgraph "读取方（消费方）"
+        UI["React 组件 useDynamicConfig"]
+        PERM["权限系统"]
+        TOOLS["工具门控"]
+        CMD["命令门控"]
+    end
+
+    MEM --> UI
+    MEM --> PERM
+    MEM --> TOOLS
+    MEM --> CMD
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 关键设计决策</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              GrowthBook 使用 <code>remoteEval</code> 模式——服务端预先计算每个用户的特性值，客户端只接收最终结果，而不是运行实验逻辑。这确保了安全性（实验逻辑不暴露给客户端）和一致性（所有客户端看到相同结果）。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §3 关键源码深度走查
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 main.tsx 先手布局 -->
+        <div id="code-prefetch" class="reveal">
+          <h3 class="content-h3">3.1 main.tsx：启动前的三次"先手布局"</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/main.tsx</code> 第 1-20 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/main.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="3,6,11"><code class="language-typescript">// 这三条语句必须在所有 import 之前：
+// 利用 ES module 执行特性：import 前的顶层语句先运行
+
+profileCheckpoint('main_tsx_entry');  // ① 性能基准时间戳
+
+startMdmRawRead();   // ② 启动 MDM 子进程（plutil/reg query）
+                     //   → 与后续 ~135ms 的 import 并行执行
+                     //   → 源码注释说明节省了约 80ms
+
+startKeychainPrefetch();  // ③ 启动 macOS keychain 读取
+                          //   → 两次串行读取约 65ms，并行化为近乎零等待
+                          //   → 避免了 applySafeConfigEnvironmentVariables()
+                          //     中的同步 spawn 阻塞</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — profileCheckpoint 性能分析基础设施</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：你可以把 <code>profileCheckpoint</code> 想象成赛跑的计时器——每段路程都打一个时间戳。整个启动过程散落着这些调用，等于给代码装了个"体检仪"，工程师随时能看出哪个阶段拖了后腿，定位性能瓶颈从"猜"变成"看数据"。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：没有检查点就像蒙眼开车，你只知道"启动慢了"，却不知道慢在哪里，每次优化都是碰运气。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 调试模式安全门控 -->
+        <div id="code-debug" class="reveal">
+          <h3 class="content-h3">3.2 main.tsx：调试模式安全门控</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/main.tsx</code> 第 232-271 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/main.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="4,8,12,17"><code class="language-typescript">// 检测调试器/检查模式
+function isBeingDebugged() {
+  const isBun = isRunningWithBun();
+
+  // ① 检查进程参数中的 --inspect 标志
+  const hasInspectArg = process.execArgv.some(arg => {
+    if (isBun) {
+      // Bun 特殊处理：单文件可执行文件的参数泄露问题
+      return /--inspect(-brk)?/.test(arg);
+    } else {
+      // Node.js：同时检测新式 --inspect 和旧式 --debug
+      return /--inspect(-brk)?|--debug(-brk)?/.test(arg);
+    }
+  });
+
+  // ② 检查 NODE_OPTIONS 环境变量
+  const hasInspectEnv = process.env.NODE_OPTIONS &&
+    /--inspect(-brk)?|--debug(-brk)?/.test(process.env.NODE_OPTIONS);
+
+  // ③ 通过全局 require('inspector') 检测活动调试器
+  try {
+    const inspector = (global as any).require('inspector');
+    const hasInspectorUrl = !!inspector.url();  // URL 存在 = 调试器已连接
+    return hasInspectorUrl || hasInspectArg || hasInspectEnv;
+  } catch {
+    return hasInspectArg || hasInspectEnv;
+  }
+}
+
+// 外部用户运行时检测到调试器 → 立即退出
+if ("external" !== 'ant' && isBeingDebugged()) {
+  process.exit(1);  // ④ 没有错误提示，静默退出
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 编译期常量替换的安全门控</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>"external" !== 'ant'</code> 这行看起来奇怪，实际上是一把"隐形开关"。构建工具在打包时把字符串 <code>"external"</code> 换成真实的用户类型，如果是内部构建，这段代码在打包产物里根本不存在（Dead Code Elimination 消掉了）。这意味着内部开发时调试不受影响，外部用户拿到的版本里调试门永远关着。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果用运行时 <code>if (process.env.USER_TYPE !== 'ant')</code> 判断，用户可以轻松通过修改环境变量绕过检查，安全形同虚设。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 工作树创建 -->
+        <div id="code-worktree" class="reveal">
+          <h3 class="content-h3">3.3 setup.ts：工作树创建的完整流程</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/setup.ts</code> 第 176-285 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/setup.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,9,14,18,23,27"><code class="language-typescript">if (worktreeEnabled) {
+  // ① 检查 VCS 支持：git 或自定义钩子二选一
+  const hasHook = hasWorktreeCreateHook()
+  const inGit = await getIsGit()
+  if (!hasHook && !inGit) {
+    process.stderr.write(chalk.red(`Error: Can only use --worktree in a git repository...`))
+    process.exit(1)
+  }
+
+  // ② 生成工作树分支名（基于 PR 编号或用户命名）
+  const slug = worktreePRNumber
+    ? `pr-${worktreePRNumber}`
+    : (worktreeName ?? getPlanSlug())  // 自动生成计划 slug
+
+  // ③ 在 git 仓库中：解析到 canonical 根（处理嵌套工作树情况）
+  if (inGit) {
+    const mainRepoRoot = findCanonicalGitRoot(getCwd())
+    // 如果当前在某个工作树内，切换到主仓库根目录
+    if (mainRepoRoot !== (findGitRoot(getCwd()) ?? getCwd())) {
+      process.chdir(mainRepoRoot)
+      setCwd(mainRepoRoot)
+    }
+  }
+
+  // ④ 实际创建工作树（可能触发 WorktreeCreate 钩子）
+  const worktreeSession = await createWorktreeForSession(
+    getSessionId(), slug, tmuxSessionName,
+    worktreePRNumber ? { prNumber: worktreePRNumber } : undefined,
+  )
+
+  // ⑤ 切换到新工作树目录，更新所有路径状态
+  process.chdir(worktreeSession.worktreePath)
+  setCwd(worktreeSession.worktreePath)
+  setOriginalCwd(getCwd())
+  setProjectRoot(getCwd())          // 工作树是独立项目根
+  saveWorktreeState(worktreeSession) // 保存状态用于恢复
+
+  // ⑥ 清理 & 重新初始化（路径变了，缓存要刷新）
+  clearMemoryFileCaches()     // 记忆文件缓存依赖路径
+  updateHooksConfigSnapshot() // 工作树可能有不同的钩子配置
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 路径状态同步更新</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：工作树创建后，代码同时更新了进程工作目录、<code>getCwd()</code>、<code>getProjectRoot()</code> 三处路径状态，并且主动清理了依赖路径的缓存。这就像搬家后除了换地址，还要主动通知快递、银行、单位——别只改了一处，让其他地方还拿着旧地址送东西。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果只更新了 <code>process.cwd()</code> 而忘了 <code>setCwd()</code>，记忆文件系统会用旧路径寻找配置，钩子系统会加载错误目录的钩子，导致一系列难以排查的隐性 bug。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 沙箱安全验证 -->
+        <div id="code-sandbox" class="reveal">
+          <h3 class="content-h3">3.4 setup.ts：bypassPermissions 的沙箱安全验证</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/setup.ts</code> 第 396-442 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/setup.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,10,16,22"><code class="language-typescript">if (permissionMode === 'bypassPermissions' || allowDangerouslySkipPermissions) {
+  // ① Root 用户检测（Unix 系统）
+  if (
+    process.platform !== 'win32' &&
+    typeof process.getuid === 'function' &&
+    process.getuid() === 0 &&           // UID 0 = root
+    process.env.IS_SANDBOX !== '1' &&   // 非沙箱豁免
+    !isEnvTruthy(process.env.CLAUDE_CODE_BUBBLEWRAP)  // 非 bubblewrap 豁免
+  ) {
+    console.error(`--dangerously-skip-permissions cannot be used with root/sudo`)
+    process.exit(1)
+  }
+
+  // ② 内部用户的额外安全检查（并行检测环境）
+  if (
+    process.env.USER_TYPE === 'ant' &&
+    process.env.CLAUDE_CODE_ENTRYPOINT !== 'local-agent' &&
+    process.env.CLAUDE_CODE_ENTRYPOINT !== 'claude-desktop'
+  ) {
+    const [isDocker, hasInternet] = await Promise.all([
+      envDynamic.getIsDocker(),       // ③ 并行检测 Docker
+      env.hasInternetAccess(),         // ④ 并行检测网络访问
+    ])
+    const isBubblewrap = envDynamic.getIsBubblewrapSandbox()
+    const isSandbox = process.env.IS_SANDBOX === '1'
+    const isSandboxed = isDocker || isBubblewrap || isSandbox
+
+    // ⑤ 必须同时满足：在沙箱中 AND 无互联网访问
+    if (!isSandboxed || hasInternet) {
+      console.error(
+        `--dangerously-skip-permissions can only be used in Docker/sandbox containers ` +
+        `with no internet access but got Docker: ${isDocker}, Bubblewrap: ${isBubblewrap}, ` +
+        `IS_SANDBOX: ${isSandbox}, hasInternet: ${hasInternet}`
+      )
+      process.exit(1)
+    }
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 双重条件安全门</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>!isSandboxed || hasInternet</code> 这个条件要求"必须在沙箱里 AND 没有网络"才能放行。这就像一个保险柜需要两把钥匙——钥匙 A（沙箱隔离）和钥匙 B（断网）缺一不可。有网络的 Docker 容器不够安全，因为里面的 AI 如果被渗透，能通过网络向外泄露数据。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果只检查"是否在 Docker 里"，有网络访问的容器依然可以被利用作为攻击跳板，<code>bypassPermissions</code> 模式就成了一个高风险的漏洞入口。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 编译期常量技巧 -->
+        <div id="code-const" class="reveal">
+          <h3 class="content-h3">3.5 main.tsx：调试检测中的"编译期常量"技巧</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/main.tsx</code> 第 266 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/main.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="3"><code class="language-typescript">// "external" !== 'ant'
+// 上面的字符串 "external" 在构建时被替换为实际的 USER_TYPE 值
+if ("external" !== 'ant' && isBeingDebugged()) {
+  process.exit(1);
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md);">
+            这行代码展示了一个聪明的<strong>编译期优化</strong>技巧：
+          </p>
+          <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; margin: var(--space-md) 0; padding-left: var(--space-lg);">
+            <li>对于 <code>ant</code> 内部构建：条件变为 <code>'ant' !== 'ant'</code> = <code>false</code>，整个 if 块被 DCE 消除</li>
+            <li>对于外部构建：条件变为 <code>'external' !== 'ant'</code> = <code>true</code>，门控生效</li>
+          </ul>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — void getCommands() 的非阻塞预取</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>void getCommands(getProjectRoot())</code> 这行代码乍看很奇怪，用 <code>void</code> 丢掉返回值，但这正是设计意图——触发命令列表的缓存预热，不等结果。等用户真的输入 <code>/xxx</code> 时，缓存早就热了，响应是即时的。就像餐厅在午高峰到来前提前备好菜，而不是客人点单才开始备料。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §4 Harness Engineering
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">🏗️ 4.1 Harness Engineering 视角</h3>
+          <p class="content-p">
+            Claude Code 的启动模块是一个典型的"驾驭层"设计——它并不是 AI 本身，而是<strong>约束、增强、编排</strong> AI 能力的一套机制。
+          </p>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🛡️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 安全约束 AI 的边界</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-sm);">
+                  <code>isBeingDebugged()</code> 安全门控和 <code>bypassPermissions</code> 的沙箱验证，本质上是在告诉 AI："你运行在什么环境里，哪些操作是被允许的"。这是 Harness 思维的核心——AI 再强大，也必须在清晰定义的约束框架内运行。
+                </p>
+                <div class="code-block" style="margin-top: var(--space-sm);">
+                  <div class="code-block-header">
+                    <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+                    <span class="code-block-lang">TypeScript</span>
+                    <button class="code-copy-btn" aria-label="复制代码">复制</button>
+                  </div>
+                  <pre><code class="language-typescript">// Harness 的体现：在 AI 启动前，先建立安全边界
+if (permissionMode === 'bypassPermissions') {
+  // 检查环境是否足够安全，不安全就拒绝启动
+  if (!isSandboxed || hasInternet) {
+    process.exit(1)  // 驾驭层拒绝为不安全的执行托底
+  }
+}</code></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⚡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 增强 AI 的响应速度</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <code>startMdmRawRead()</code> 和 <code>startKeychainPrefetch()</code> 在 AI 模型初始化前就并行预热，确保 AI 拿到配置的时候不用等待。这是 Harness 层对 AI 能力的主动增强——不是 AI 自己优化的，而是驾驭层提前准备好。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📋</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. 编排 AI 的初始化顺序</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <code>setup.ts</code> 中的 9 步拓扑排序，是 Harness 对 AI 运行环境的精确编排。每一步顺序都经过设计：先有工作目录，才有钩子；先有钩子，才有文件监听。这种"为 AI 铺路"的逻辑，正是驾驭工程的价值。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <blockquote style="border-left: 4px solid var(--accent-purple); padding: var(--space-md) var(--space-lg); background: #faf5ff; border-radius: 0 var(--radius-md) var(--radius-md) 0; margin: var(--space-lg) 0; font-style: italic; color: var(--text-secondary);">
+            "Harness 的艺术在于：给 AI 足够的空间发挥创造力，同时确保每一步都在人类可理解和可控的范围内。"
+            <br/><span style="font-style: normal; font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary);">— Claude Code 架构的隐含设计原则</span>
+          </blockquote>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">💡 4.2 对大模型应用的启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-blue);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 启动预热是用户体验的第一关</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">把 I/O 操作（配置读取、API 预连接）提前到"等待阶段"执行，而不是等用户请求才触发。<code>fire-and-forget</code> + 后续等待的模式，让等待时间和必要工作时间重叠，用户感知到的延迟可以大幅缩短。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-green);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 安全验证要在最早的时机完成</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Claude Code 在 <code>import</code> 阶段就完成调试检测，在会话初始化时完成沙箱验证。你自己的大模型应用也应该把"这个请求是否合法"的判断尽量前置，避免做了一堆昂贵的 AI 调用之后才发现请求不合法。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-orange);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. 编译期常量比运行时检查更安全</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">通过构建工具替换字符串常量，可以实现"内外版本行为不同"且无法通过修改环境变量绕过的安全机制。如果你的应用有内外版本差异（如内部调试功能），这种方式比 <code>if (process.env.DEBUG)</code> 更可靠。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-cyan);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">4. 多处状态必须同步更新</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">当一个操作（如切换工作目录）影响多个系统状态时，必须有一个"统一更新入口"，并主动清理依赖旧状态的缓存。这是所有驾驭层都需要面对的状态一致性问题。</p>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-md); border-left: 4px solid var(--accent-purple);">
+            <h4 style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">5. 观测性从第一行代码就开始</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>profileCheckpoint('main_tsx_entry')</code> 是代码的第一行。告诉你：可观测性不是"功能做完了再加"的事，而是从架构设计阶段就要考虑的基础设施。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §5 思考题与进阶方向
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：为什么 setup.ts 中的 logEvent('tengu_started') 不能放在 setup() 函数的最开头？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>logEvent</code> 依赖 <code>initSinks()</code> 初始化的分析汇（analytics sink）来真正发送事件。如果放在 <code>setup()</code> 最开头，分析汇还没连接，事件会丢失。而将 <code>tengu_started</code> 放在 <code>initSinks()</code> 之后、可能失败的操作（如 <code>checkForReleaseNotes()</code>）之前，是刻意为之的设计——这个事件成为"会话成功启动"的分母基准，后续即使崩溃，监控系统也能计算出准确的崩溃率。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：findCanonicalGitRoot vs. findGitRoot 的区别是什么？在工作树场景中各自返回什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>findGitRoot</code> 返回当前所在 git 仓库的根（包括工作树自身的根），而 <code>findCanonicalGitRoot</code> 会识别当前是否在工作树中，如果是，会向上找到主仓库的根目录。工作树创建时必须用 canonical 版本，因为如果已经在某个工作树内再运行 <code>--worktree</code>，<code>findGitRoot</code> 会返回工作树根，导致在工作树里再嵌套创建工作树，形成混乱的嵌套结构。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：GrowthBook 使用 remoteEval 而不是本地评估有什么安全隐患和好处？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：本地评估模式下，实验逻辑会打包到客户端，攻击者可以通过逆向工程了解灰度发布策略，甚至修改本地代码强制启用未公开功能。<code>remoteEval</code> 模式下服务端做决策后只发结果，客户端永远不知道判断逻辑。代价是需要网络请求，但磁盘缓存 + 后台刷新机制保证了可用性，离线时仍可使用缓存值。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：startMdmRawRead() 和 startKeychainPrefetch() 为什么不使用 import 语句而是 require() + 函数调用？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：ESM 的 <code>import</code> 语句是静态的，必须在模块顶层声明，引擎会在执行任何代码前先处理所有 import 并等待模块加载。因此，写在 import 前面的代码在 Bun/Node.js 中实际上是不可能的——如果用 <code>import</code> 语句导入这两个函数，它们的模块加载本身就是阻塞的。源码中使用的是顶层代码（在 ESM 模块的顶层作用域）先执行，然后用 CommonJS <code>require()</code> 懒加载，这样就能先触发 I/O 再做模块加载。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q5：如果 checkForReleaseNotes() 在 tengu_started 之后崩溃，监控系统看到什么？这对 SLA 计算有什么影响？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：监控系统会看到一个 <code>tengu_started</code> 事件，但后续没有正常的会话交互事件，只有崩溃报告。这正是设计意图：<code>tengu_started</code> 作为分母，用于计算"启动成功但随后崩溃"的比率。如果 <code>tengu_started</code> 放在 <code>checkForReleaseNotes</code> 之后，那么在 release notes 崩溃的情况下，这个启动根本不会被计入分母，导致崩溃率被低估。当前的位置确保了 SLA 计算的准确性。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 进阶方向 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 深入阅读</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>src/entrypoints/init.ts</strong> — 了解 <code>applySafeConfigEnvironmentVariables()</code> 如何安全地将配置注入环境变量</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 性能分析</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">查看 <strong>src/utils/startupProfiler.ts</strong>，了解 <code>profileCheckpoint</code> 如何收集和报告启动性能数据</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 迁移系统</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">查看 <strong>src/migrations/</strong> 目录，了解 Claude Code 如何处理配置格式迁移</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🌲</span> 工作树系统</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <strong>src/utils/worktree.ts</strong>，了解 git worktree 的创建、管理和清理机制</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">
+              Claude Code 的启动流程是一个<strong>高度优化且安全性至上</strong>的初始化序列：
+            </p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>性能优化</strong>：并行预取将 I/O 等待隐藏在模块加载时间中，节省约 100-200ms 启动时间</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>安全门控</strong>：调试检测、Root 检测、沙箱验证三道防线，在最早时机阻止不安全执行</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>有序初始化</strong>：严格的拓扑顺序确保每个组件在其依赖就绪后再初始化</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>观测性</strong>：<code>profileCheckpoint</code> 和 <code>tengu_started</code> 为性能分析和健康监控提供基础设施</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           课程导航页脚
+      ══════════════════════════════════════ -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="01.html" class="nav-prev">
+          ← 上一课：全景架构解析
+        </a>
+
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+        <a href="03.html" class="nav-next">
+          下一课：权限系统 →
+        </a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     页脚
+═══════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="01.html">← 上一课</a>
+        <a href="03.html">下一课 →</a>
+      </nav>
+
+      <p class="footer-copy">
+        第02课 · 启动流程与初始化机制 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<!-- 公共 JS -->
+<script src="../js/main.js"></script>
+
+<!-- 目录高亮 scrollspy -->
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

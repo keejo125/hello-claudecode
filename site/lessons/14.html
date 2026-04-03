@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第14课：启动性能优化与缓存策略 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 延迟预取架构、三种记忆化缓存策略（TTL/LRU）与并发生成器调度，掌握启动性能剖析工具的使用方法。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-14">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-14" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+    <a href="13.html">← 第13课</a>
+    <a href="15.html">第15课 →</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-orange">第五阶段 · 性能工程与可观测性</span>
+      <span class="sep">/</span>
+      <span>第14课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🚀</span>
+      <span>LESSON 14 · PHASE 05</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      启动性能优化<br/>
+      <span class="gradient-text">与缓存策略</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-orange">第五阶段 · 性能工程</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐ 进阶</span>
+      <span class="tag tag-green">延迟预取 · TTL · LRU · 并发调度</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解 Claude Code 延迟预取（Deferred Prefetch）架构，掌握"非关键即延迟"的启动优化思想</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>深入分析三种记忆化缓存策略（TTL、TTL-Async、LRU）的实现细节与适用场景</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>掌握并发生成器调度算法，能够识别事件循环阻塞的根本原因</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>学会使用启动性能剖析工具（startupProfiler）定位关键路径瓶颈</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>提炼"写穿透缓存 + 并发冷击去重 + LRU 淘汰"组合策略，并在实际项目中落地</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-map">1.1 概念图谱</a></div>
+        <div class="toc-item sub"><a href="#concept-terms">1.2 关键概念辨析</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-startup">2.1 启动路径全景</a></div>
+        <div class="toc-item sub"><a href="#arch-cache">2.2 缓存层次结构</a></div>
+        <div class="toc-item sub"><a href="#arch-concurrent">2.3 并发调度设计</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-profiler">3.1 启动剖析器</a></div>
+        <div class="toc-item sub"><a href="#code-ttl">3.2 TTL 记忆化</a></div>
+        <div class="toc-item sub"><a href="#code-lru">3.3 LRU 记忆化</a></div>
+        <div class="toc-item sub"><a href="#code-gen">3.4 并发生成器调度</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+        <div class="toc-item"><a href="#appendix">§6 API 速查</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-map" class="reveal">
+          <h3 class="content-h3">1.1 概念图谱</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    A[启动性能优化] --> B[启动时间]
+    A --> C[运行时性能]
+    A --> D[可观测性]
+
+    B --> B1[关键路径识别]
+    B --> B2[延迟预取]
+    B --> B3[动态导入]
+
+    C --> C1[TTL 记忆化缓存]
+    C --> C2[LRU 记忆化缓存]
+    C --> C3[并发生成器调度]
+
+    D --> D1[启动剖析 Profiler]
+    D --> D2[检查点 Checkpoint]
+    D --> D3[采样上报]
+
+    C1 --> C1a[同步版 memoizeWithTTL]
+    C1 --> C1b[异步版 memoizeWithTTLAsync]
+    C2 --> C2a[LRU-Cache 库]
+    C3 --> C3a[Promise.race 并发调度]
+            </div>
+          </div>
+        </div>
+
+        <div id="concept-terms" class="reveal">
+          <h3 class="content-h3">1.2 关键概念辨析</h3>
+          <table class="compare-table">
+            <thead>
+              <tr><th>概念</th><th>定义</th><th>与普通方案的区别</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>延迟预取</strong></td>
+                <td>首次渲染完成后才异步拉取非关键资源</td>
+                <td>普通预取在启动时同步阻塞</td>
+              </tr>
+              <tr>
+                <td><strong>写穿透缓存</strong></td>
+                <td>陈旧值可立即返回，后台异步刷新</td>
+                <td>传统缓存要等待刷新完成</td>
+              </tr>
+              <tr>
+                <td><strong>冷击去重</strong></td>
+                <td>N 个并发冷启动只触发一次外部调用</td>
+                <td>无去重会产生 N 次外部调用（如 AWS SSO）</td>
+              </tr>
+              <tr>
+                <td><strong>LRU 淘汰</strong></td>
+                <td>超过容量上限时驱逐最近最少使用的条目</td>
+                <td>无界 Map 会导致内存持续增长</td>
+              </tr>
+              <tr>
+                <td><strong>事件循环阻塞</strong></td>
+                <td>主线程同步执行超过阈值（如 100ms）导致 I/O 饥饿</td>
+                <td>异步代码可能因 CPU 密集操作阻塞事件循环</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-startup" class="reveal">
+          <h3 class="content-h3">2.1 启动路径全景架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant CLI as CLI 入口
+    participant Main as main.tsx
+    participant Prof as startupProfiler
+    participant Prefetch as deferredPrefetch
+    participant Memo as memoize.ts
+    participant Gen as generators.ts
+
+    CLI->>Prof: profileCheckpoint('cli_entry')
+    CLI->>Main: 加载模块
+    Main->>Prof: profileCheckpoint('main_tsx_imports_loaded')
+    Main->>Main: 首次渲染（阻塞路径）
+    Main->>Prof: profileCheckpoint('main_after_run')
+    Main->>Prefetch: startDeferredPrefetches()（非阻塞）
+    Prefetch->>Memo: 读/刷新配置与能力
+    Prefetch->>Gen: 并发拉取多个资源
+    Gen-->>Prefetch: 按完成顺序产出值
+    Prof->>Prof: logStartupPerf()（采样上报）
+            </div>
+          </div>
+          <div class="callout callout-tip reveal" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计思想：关键路径最小化原则</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>"首屏必须的，同步执行；首屏之后的，全部推迟。"</strong>
+              Claude Code 把所有非展示性的初始化工作（用户上下文、模型能力、特性开关等）移出了关键路径。
+              用户感知到的"启动时间"只是加载模块 + 首次渲染，其余工作在后台并行完成。
+            </p>
+          </div>
+        </div>
+
+        <div id="arch-cache" class="reveal">
+          <h3 class="content-h3">2.2 缓存层次结构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph LR
+    A[调用方] --> B{缓存命中？}
+    B -->|新鲜| C[立即返回]
+    B -->|陈旧| D[返回旧值]
+    B -->|冷启动| E[并发去重]
+
+    D --> F[后台异步刷新]
+    E --> G[单次外部调用]
+    F --> H[写入新值]
+    G --> H
+            </div>
+          </div>
+          <p class="content-p">为什么需要三层策略？</p>
+          <table class="arch-table">
+            <thead><tr><th>策略</th><th>适用场景</th><th>核心亮点</th></tr></thead>
+            <tbody>
+              <tr><td><strong>TTL（同步）</strong></td><td>同步函数，配置读取、格式化等无需 await 的场景</td><td>写穿透 + 身份守卫</td></tr>
+              <tr><td><strong>TTL-Async（异步）</strong></td><td>需要网络/IO 的函数</td><td>并发冷击去重（inFlight Map）</td></tr>
+              <tr><td><strong>LRU（大对象）</strong></td><td>消息处理等需要限制内存上限的场景</td><td>防止 300MB+ 内存膨胀</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="arch-concurrent" class="reveal">
+          <h3 class="content-h3">2.3 并发调度设计</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+flowchart TD
+    Start[N 个 AsyncGenerator] --> Init[启动初始批次 &lt;= 并发上限]
+    Init --> Race[Promise.race 等待最快完成者]
+    Race --> Check{完成的 generator done?}
+    Check -->|否| Yield[产出值，继续该 generator 的下一个值]
+    Check -->|是| Next[从队列取下一个 generator 启动]
+    Yield --> Race
+    Next --> Race
+    Race -->|所有完成| Done[结束]
+            </div>
+          </div>
+          <div class="callout callout-info reveal" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 为什么用 Promise.race 而不是 Promise.all？</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <code>Promise.all</code> 只能在所有 generator 都完成后才能产出值，无法流式处理。
+              <code>Promise.race</code> 允许"谁先完成谁先处理"，实现流式背压控制，用户在第一个结果就绪时即可看到响应。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 启动剖析器 -->
+        <div id="code-profiler" class="reveal">
+          <h3 class="content-h3">3.1 启动剖析器：采样驱动的双模式设计</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/startupProfiler.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📊 采样驱动</span>
+            <span class="pattern-badge">🗺️ 声明式阶段配置</span>
+            <span class="pattern-badge">⚡ 零开销路径</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/utils/startupProfiler.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,5,8,11"><code class="language-typescript">// 模块级别的决策 — 只做一次，之后沿用
+const DETAILED_PROFILING = isEnvTruthy(process.env.CLAUDE_CODE_PROFILE_STARTUP)
+
+// 采样决策：100% ant 用户 + 0.5% 外部用户
+const STATSIG_SAMPLE_RATE = 0.005
+const STATSIG_LOGGING_SAMPLED =
+  process.env.USER_TYPE === 'ant' || Math.random() < STATSIG_SAMPLE_RATE
+
+// 启用剖析 = 详细模式 OR 采样命中
+const SHOULD_PROFILE = DETAILED_PROFILING || STATSIG_LOGGING_SAMPLED
+
+// 阶段定义：声明式，数据驱动
+const PHASE_DEFINITIONS = {
+  import_time:   ['cli_entry', 'main_tsx_imports_loaded'],
+  init_time:     ['init_function_start', 'init_function_end'],
+  settings_time: ['eagerLoadSettings_start', 'eagerLoadSettings_end'],
+  total_time:    ['cli_entry', 'main_after_run'],
+} as const</code></pre>
+          </div>
+
+          <div class="accordion open" data-group="code-anno-profiler">
+            <div class="accordion-header" aria-expanded="true">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead><tr><th>行</th><th>设计意图</th></tr></thead>
+                  <tbody>
+                    <tr><td>L2</td><td>在模块加载瞬间决策，后续调用不再计算随机数 — 保证同一会话数据完整性</td></tr>
+                    <tr><td>L5-7</td><td><code>SHOULD_PROFILE = DETAILED || SAMPLED</code>，两种模式共用同一采集路径，避免代码重复</td></tr>
+                    <tr><td>L11</td><td>非采样用户：函数体第一行 return，零开销</td></tr>
+                    <tr><td>L14-18</td><td><strong>数据驱动</strong>：声明"开始—结束检查点对"，新增阶段只加一行配置，不改计算逻辑</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 采样驱动 + 声明式阶段配置</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：在模块加载时一次性决定是否采样，就像餐厅开门前确定"今天参加美食节打折活动"，之后每桌客人都享受一致的折扣政策。<code>PHASE_DEFINITIONS</code> 把"哪两个检查点之间算一个阶段"写成数据，新增监控指标只加一行配置，不改逻辑。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：每个 <code>profileCheckpoint</code> 调用都跑一次 <code>Math.random()</code>，同一会话的检查点有些被采样有些没有，计算出来的阶段时间要么 undefined 要么负数，遥测数据一塌糊涂。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 TTL 记忆化 -->
+        <div id="code-ttl" class="reveal">
+          <h3 class="content-h3">3.2 TTL 记忆化：写穿透 + 并发冷击去重</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/memoize.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔄 写穿透缓存</span>
+            <span class="pattern-badge">🛡️ 身份守卫</span>
+            <span class="pattern-badge">⚡ 冷击去重</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/utils/memoize.ts — 同步版</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="12,14,16,18"><code class="language-typescript">export function memoizeWithTTL&lt;Args extends unknown[], Result&gt;(
+  f: (...args: Args) =&gt; Result,
+  cacheLifetimeMs: number = 5 * 60 * 1000,
+): MemoizedFunction&lt;Args, Result&gt; {
+  const cache = new Map&lt;string, CacheEntry&lt;Result&gt;&gt;()
+
+  const memoized = (...args: Args): Result =&gt; {
+    const key = jsonStringify(args)
+    const cached = cache.get(key)
+    const now = Date.now()
+
+    if (!cached) {                        // 冷启动：阻塞计算
+      const value = f(...args)
+      cache.set(key, { value, timestamp: now, refreshing: false })
+      return value
+    }
+
+    if (now - cached.timestamp > cacheLifetimeMs && !cached.refreshing) {
+      cached.refreshing = true            // 标记，防止并发重复刷新
+
+      Promise.resolve()
+        .then(() =&gt; {
+          const newValue = f(...args)
+          // 身份守卫：只有当前缓存条目仍然是原来的那个才覆盖
+          if (cache.get(key) === cached) {
+            cache.set(key, { value: newValue, timestamp: Date.now(), refreshing: false })
+          }
+        })
+        .catch(e =&gt; {
+          logError(e)
+          if (cache.get(key) === cached) cache.delete(key)
+        })
+
+      return cached.value                 // 立即返回旧值，用户无感知
+    }
+
+    return cache.get(key)!.value
+  }
+
+  memoized.cache = { clear: () =&gt; cache.clear() }
+  return memoized
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 身份守卫 + 写穿透缓存</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：想象超市货架管理员离开去取货时，如果有人放了更新的商品，他回来时先确认"这还是我原来那批货吗？"不是就不覆盖。<code>cache.get(key) === cached</code> 就是这个确认动作，引用相等比内容比较快得多。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：后台刷新完成后无条件写入缓存，可能把用户刚刚手动刷新的新数据覆盖成旧的，导致配置读取到过期值。
+            </p>
+          </div>
+
+          <h3 class="content-h3" style="margin-top: var(--space-xl);">异步版 memoizeWithTTLAsync：冷击去重</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/utils/memoize.ts — 异步版</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="6,8,9"><code class="language-typescript">export function memoizeWithTTLAsync&lt;Args extends unknown[], Result&gt;(
+  f: (...args: Args) =&gt; Promise&lt;Result&gt;,
+  cacheLifetimeMs: number = 5 * 60 * 1000,
+) {
+  const cache = new Map&lt;string, CacheEntry&lt;Result&gt;&gt;()
+  // 关键：in-flight 映射，冷击去重的核心
+  const inFlight = new Map&lt;string, Promise&lt;Result&gt;&gt;()
+
+  const memoized = async (...args: Args): Promise&lt;Result&gt; =&gt; {
+    const key = jsonStringify(args)
+    const cached = cache.get(key)
+
+    if (!cached) {
+      const pending = inFlight.get(key)
+      if (pending) return pending       // 多个并发请求共享同一个 Promise！
+
+      const promise = f(...args)        // 真正发起一次外部调用
+      inFlight.set(key, promise)
+
+      try {
+        const result = await promise
+        if (inFlight.get(key) === promise) {
+          cache.set(key, { value: result, timestamp: Date.now(), refreshing: false })
+        }
+        return result
+      } finally {
+        if (inFlight.get(key) === promise) inFlight.delete(key)
+      }
+    }
+  }
+
+  // clear() 同时清空 inFlight
+  memoized.cache = { clear: () =&gt; { cache.clear(); inFlight.clear() } }
+  return memoized
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 冷击去重（inFlight Map）</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：就像星巴克同时来了 10 个人点同款饮品，收银员不会起 10 口锅——记录"这款正在做了"，后面 9 个人等同一杯。<code>inFlight</code> Map 就是"正在做"的记录本，多个并发调用共享同一个 Promise，外部服务只被调用一次。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：10 个并发冷启动会发出 10 次 AWS SSO 请求，不仅慢，还可能触发速率限制被拒绝，然后 10 个请求都失败。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 LRU 记忆化 -->
+        <div id="code-lru" class="reveal">
+          <h3 class="content-h3">3.3 LRU 记忆化：防内存膨胀</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/utils/memoize.ts — LRU</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="5,11"><code class="language-typescript">export function memoizeWithLRU&lt;Args extends unknown[], Result extends NonNullable&lt;unknown&gt;&gt;(
+  f: (...args: Args) =&gt; Result,
+  cacheFn: (...args: Args) =&gt; string,  // 自定义 key 生成函数
+  maxCacheSize: number = 100,
+): LRUMemoizedFunction&lt;Args, Result&gt; {
+  const cache = new LRUCache&lt;string, Result&gt;({
+    max: maxCacheSize,  // 超过 100 条自动淘汰最近最少使用的
+  })
+
+  const memoized = (...args: Args): Result =&gt; {
+    const key = cacheFn(...args)
+    const cached = cache.get(key)
+    if (cached !== undefined) return cached
+
+    const result = f(...args)
+    cache.set(key, result)
+    return result
+  }
+
+  memoized.cache = {
+    // peek() 不更新 LRU 顺序，仅观察不提升
+    get: (key: string) =&gt; cache.peek(key),
+  }
+  return memoized
+}</code></pre>
+          </div>
+
+          <div class="callout callout-warning" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>⚠️</span> 背景故事：lodash memoize 的教训</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              曾使用 lodash memoize（无界 Map），消息处理函数导致内存占用 300MB+。改用 LRU-100 后内存显著下降，代价是极端情况下缓存命中率降低（对话轮次超过 100 时旧消息被淘汰）。这是<strong>工程权衡</strong>：以可接受的命中率下降换取内存可预测性。
+            </p>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — LRU + peek() 观察不提升</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>cache.peek()</code> 读取值但不更新"最近使用"顺序，就像图书馆员工查目录时不算"借阅"——不影响淘汰决策。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：监控代码每次打印缓存状态都在刷新 LRU 顺序，把本来应该被淘汰的旧消息"续命"，内存膨胀问题复现。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 并发生成器调度 -->
+        <div id="code-gen" class="reveal">
+          <h3 class="content-h3">3.4 并发生成器调度：流式背压控制</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/generators.ts</code></p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/utils/generators.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="6,15,18,22"><code class="language-typescript">export async function* all&lt;A&gt;(
+  generators: AsyncGenerator&lt;A, void&gt;[],
+  concurrencyCap = Infinity,
+): AsyncGenerator&lt;A, void&gt; {
+
+  const next = (generator: AsyncGenerator&lt;A, void&gt;) =&gt; {
+    const promise: Promise&lt;QueuedGenerator&lt;A&gt;&gt; = generator
+      .next()
+      .then(({ done, value }) =&gt; ({
+        done, value,
+        generator,  // 携带引用，知道"是谁完成了"
+        promise,    // 自引用：用于从 Set 中 O(1) 精确删除
+      }))
+    return promise
+  }
+
+  const waiting = [...generators]
+  const promises = new Set&lt;Promise&lt;QueuedGenerator&lt;A&gt;&gt;&gt;()
+
+  while (promises.size &lt; concurrencyCap && waiting.length &gt; 0) {
+    promises.add(next(waiting.shift()!))
+  }
+
+  while (promises.size &gt; 0) {
+    const { done, value, generator, promise } = await Promise.race(promises)
+    promises.delete(promise)  // 精确删除，O(1)
+
+    if (!done) {
+      promises.add(next(generator))
+      if (value !== undefined) yield value
+    } else if (waiting.length &gt; 0) {
+      promises.add(next(waiting.shift()!))
+    }
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 自引用 Promise + 流式背压</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>promise</code> 变量在 <code>.then</code> 的闭包里引用自身，就像信封里装了"这个信封的地址"——<code>Promise.race</code> 完成后能精确找到并删除这个 Promise，O(1) vs O(n)。<code>Promise.race</code> 而不是 <code>Promise.all</code> 让第一个结果立即可用，用户不需要等最慢的那个任务完成。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>如果不这样做</strong>：用 Promise.all 等所有 generator 都跑完再输出，在流式响应场景里用户要等最慢的数据源完成，体验降级；遍历 Set 删除是 O(n) 操作，在高并发场景下累积成性能瓶颈。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 Harness Engineering 视角</h3>
+          <p class="content-p">
+            本课的启动优化和缓存策略，本质上都在做同一件事：<strong>把"贵"的操作推迟到真正需要的时候，然后用缓存避免重复付出这个代价</strong>。
+          </p>
+          <div class="callout callout-info reveal">
+            <div class="callout-title"><span>🔗</span> 三段式思路</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-md); margin-top: var(--space-md);">
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-blue); margin-bottom: 6px;">⚡ 关键路径极简化</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">首屏渲染前只做最少工作，其余推后。用户感知的启动时间就是关键路径长度。</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-green); margin-bottom: 6px;">🔄 非关键路径异步化</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">写穿透缓存：过期不代表无效，旧值先用，后台悄悄刷新。好够用原则。</div>
+              </div>
+              <div style="background: white; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-md);">
+                <div style="font-weight: 700; color: var(--accent-orange); margin-bottom: 6px;">🛡️ 缓存层保障一致性</div>
+                <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">身份守卫：后台刷新完成时先确认"缓存还是我的那份"，避免覆盖新数据。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🚀</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 1：大模型的"冷启动"也可以延迟预取</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">模型的工具列表、用户历史摘要、系统提示片段等在首轮回复前不是必须的，可以在返回第一个 token 后再加载，不阻塞用户看到响应。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">💾</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 2：写穿透缓存适合工具结果缓存</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>read_file</code> 等确定性工具的结果可以缓存，TTL 过期后先返回旧值同时触发后台刷新。对于读代码这类场景，用户提问时代码基本不会改变。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔁</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 3：冷击去重对 embedding 服务很重要</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">多个并发的 embedding 请求如果参数相同，只发一次远程调用，其余等待结果。这在 RAG 场景下能显著减少 embedding API 的费用和延迟。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-cyan);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 4：Generator 调度适合多工具并发</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">当 AI 需要并发调用多个工具时，用类似 <code>all(generators, cap)</code> 的调度策略，控制并发上限（避免 API 限流），同时流式返回每个工具的结果。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：<code>memoizeWithTTL</code> 中的 <code>refreshing</code> 标志位有什么作用？如果去掉它，可能发生什么问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>refreshing</code> 标志防止并发的后台刷新任务。如果缓存陈旧且 10 个调用同时到来，没有这个标志每个调用都会启动一个后台刷新任务，最终有 10 个 Promise 并发执行相同的 <code>f(...args)</code>，白白浪费资源。<code>refreshing = true</code> 确保只有第一个发现"陈旧"的调用会启动刷新，其余调用直接返回旧值。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：为什么 <code>memoizeWithLRU</code> 的 <code>get</code> 方法使用 <code>cache.peek()</code> 而不是 <code>cache.get()</code>？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>cache.get()</code> 会更新 LRU 顺序，把被访问的条目标记为"最近使用"，延迟其被淘汰的时间。对于调试/监控接口来说，你只是在观察缓存状态，不是真正"使用"数据，不应该影响淘汰决策。<code>peek()</code> 只读取值不更新顺序，是"无副作用"的观察操作。如果用 <code>get()</code>，每次监控检查都会让被观察的数据续命，导致 LRU 无法正常淘汰。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3（进阶）：如果并发生成器的某一个 generator 抛出异常，<code>all()</code> 函数会怎么处理？如何改进错误隔离？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：当前实现中 generator 的异常会通过 <code>await Promise.race(promises)</code> 传播出去，导致整个 <code>all()</code> 函数抛出异常，其他 generator 的结果也丢失了。改进方案：在 <code>next()</code> 辅助函数里 <code>try/catch</code> 每个 generator 的 <code>.next()</code> 调用，异常时产出一个 <code>{ done: true, value: undefined, error }</code> 的特殊结果，让调用方可以选择忽略错误继续处理其他 generator。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4（架构）：延迟预取（Deferred Prefetch）与懒加载（Lazy Load）的本质区别是什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：懒加载是"用到时才加载"——第一次访问时触发加载，调用方要等待。延迟预取是"首屏渲染后主动提前加载，不等用到"——预判用户接下来会用的数据，在空闲时提前取好。懒加载会让第一次使用慢（冷启动代价），适合不常用的功能。延迟预取把冷启动代价摊销到后台，第一次使用时已经有缓存，适合启动后必然会用到的数据（如用户配置、模型能力）。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> HTTP stale-while-revalidate</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">RFC 5861 定义的缓存指令与 <code>memoizeWithTTL</code> 的思想完全一致，了解浏览器实现有助于加深理解</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> Node.js 性能 API</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">深入 <code>perf_hooks</code> 模块，了解 <code>PerformanceObserver</code>、<code>PerformanceMark</code> 的底层机制</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> LRU-Cache 实现原理</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>lru-cache</code> 库的内部实现（双向链表 + 哈希表），理解 O(1) 淘汰的数据结构设计</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔌</span> Bun vs Node.js 运行时差异</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">深入研究 Bun 中 FSWatcher 死锁问题和堆快照 API 的差异，理解跨运行时兼容性工程</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §6 附录 API 速查 -->
+      <section class="content-section" id="appendix">
+        <div class="reveal">
+          <p class="section-label">Section 06</p>
+          <h2 class="content-h2">附录：关键 API 速查</h2>
+        </div>
+        <div class="reveal">
+          <table class="arch-table">
+            <thead><tr><th>API</th><th>文件</th><th>功能</th></tr></thead>
+            <tbody>
+              <tr><td><code>profileCheckpoint(name)</code></td><td>startupProfiler.ts</td><td>记录一个命名检查点</td></tr>
+              <tr><td><code>profileReport()</code></td><td>startupProfiler.ts</td><td>触发报告生成和 Statsig 上报</td></tr>
+              <tr><td><code>memoizeWithTTL(f, ms)</code></td><td>memoize.ts</td><td>同步函数 TTL 缓存</td></tr>
+              <tr><td><code>memoizeWithTTLAsync(f, ms)</code></td><td>memoize.ts</td><td>异步函数 TTL 缓存 + 冷击去重</td></tr>
+              <tr><td><code>memoizeWithLRU(f, keyFn, max)</code></td><td>memoize.ts</td><td>LRU 有界缓存</td></tr>
+              <tr><td><code>all(generators, cap)</code></td><td>generators.ts</td><td>并发生成器调度</td></tr>
+              <tr><td><code>lastX(generator)</code></td><td>generators.ts</td><td>取生成器最后一个值</td></tr>
+              <tr><td><code>toArray(generator)</code></td><td>generators.ts</td><td>生成器转数组</td></tr>
+            </tbody>
+          </table>
+          <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-md);">
+            <em>本课源码文件：<code>src/utils/startupProfiler.ts</code>、<code>src/utils/memoize.ts</code>、<code>src/utils/generators.ts</code></em>
+          </p>
+        </div>
+      </section>
+
+      <!-- 课程导航页脚 -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="13.html" class="nav-prev">← 第13课</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="15.html" class="nav-next">下一课：内存管理与诊断 →</a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="13.html">← 第13课</a>
+        <a href="15.html">第15课 →</a>
+      </nav>
+      <p class="footer-copy">第14课 · 启动性能优化与缓存策略 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

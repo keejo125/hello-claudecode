@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第10课：技能系统 — 可扩展的能力框架 | Claude Code 教程</title>
+  <meta name="description" content="深入理解技能系统的多源并行加载、Frontmatter 解析体系、Fork 子代理执行隔离与 Skillify 自动生成技能的设计哲学。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; max-width: 1400px; margin: 0 auto; padding: 0; align-items: start; }
+    .lesson-toc { position: sticky; top: 76px; height: calc(100vh - 76px); overflow-y: auto; padding: var(--space-xl) var(--space-lg); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-cyan); margin-bottom: var(--space-md); }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a { display: block; padding: 6px 10px; font-size: 13px; color: var(--text-secondary); border-radius: var(--radius-sm); border-left: 2px solid transparent; transition: all var(--transition-fast); line-height: 1.4; }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .skill-source-box { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; margin: var(--space-lg) 0; }
+    .skill-source-row { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-subtle); }
+    .skill-source-row:last-child { border-bottom: none; }
+    .skill-source-priority { width: 40px; display: flex; align-items: center; justify-content: center; font-family: var(--font-code); font-size: 11px; font-weight: 700; color: white; flex-shrink: 0; }
+    .skill-source-content { padding: 10px 16px; flex: 1; }
+    .skill-source-name { font-weight: 700; color: var(--text-heading); font-size: var(--font-size-sm); }
+    .skill-source-path { font-family: var(--font-code); font-size: 11px; color: var(--accent-green); margin-top: 2px; }
+    .skill-source-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .score-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin: var(--space-md) 0; }
+    .score-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .score-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+    .score-table tr:last-child td { border-bottom: none; }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-10">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-10" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第三阶段 · 核心引擎与高级特性</span>
+      <span class="sep">/</span>
+      <span>第10课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🛠️</span>
+      <span>LESSON 10 · PHASE 03</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      技能系统<br/>
+      <span class="gradient-text">可扩展的能力框架</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第三阶段 · 核心引擎与高级特性</span>
+      <span class="tag tag-orange">⏱ 建议 120 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐ 高级</span>
+      <span class="tag tag-green">前置：第05、09课</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span><strong>理解技能 vs 命令的概念区分</strong>：掌握斜杠命令与技能的演化关系，以及为何技能是"超级命令"</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span><strong>掌握多源并行加载与去重机制</strong>：理解五路并行扫描、<code>realpath</code> 去重策略和条件技能延迟激活</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span><strong>深入 Frontmatter 解析体系</strong>：了解技能元数据的完整字段体系及其对执行行为的控制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span><strong>理解 Fork 子代理执行隔离</strong>：掌握 <code>SkillTool</code> 如何通过 <code>runAgent</code> 将技能在独立上下文中运行</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span><strong>学习 Skillify 自动生成技能</strong>：理解从对话会话中自动沉淀可复用工作流的设计哲学</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-vs-command">1.1 技能 vs 命令</a></div>
+        <div class="toc-item sub"><a href="#concept-sources">1.2 技能来源层次</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 全景架构</a></div>
+        <div class="toc-item sub"><a href="#arch-design">2.2 核心设计思想</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-bundled">3.1 内置技能惰性提取</a></div>
+        <div class="toc-item sub"><a href="#code-load">3.2 五路并行加载与去重</a></div>
+        <div class="toc-item sub"><a href="#code-frontmatter">3.3 Frontmatter 解析</a></div>
+        <div class="toc-item sub"><a href="#code-skilltool">3.4 SkillTool Fork 执行</a></div>
+        <div class="toc-item sub"><a href="#code-skillify">3.5 Skillify 自动生成</a></div>
+        <div class="toc-item sub"><a href="#code-score">3.6 7天半衰期评分</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-vs-command" class="reveal">
+          <h3 class="content-h3">1.1 技能（Skill）vs 命令（Command）：两个时代</h3>
+          <p class="content-p">理解技能系统，首先要理解它的历史脉络：</p>
+          <table class="compare-table">
+            <thead>
+              <tr><th>维度</th><th>旧版命令（Command）</th><th>新版技能（Skill）</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>目录结构</strong></td><td>单个 <code>.md</code> 文件</td><td><code>技能名/SKILL.md</code> 目录格式</td></tr>
+              <tr><td><strong>关联文件</strong></td><td>不支持</td><td>支持 <code>files</code> 字段附带参考文件</td></tr>
+              <tr><td><strong>执行隔离</strong></td><td>仅内联</td><td>支持 <code>context: fork</code>（子代理隔离）</td></tr>
+              <tr><td><strong>条件激活</strong></td><td>不支持</td><td>支持 <code>paths</code> 字段按文件路径激活</td></tr>
+              <tr><td><strong>使用统计</strong></td><td>无</td><td>有（7天半衰期评分）</td></tr>
+              <tr><td><strong>去重机制</strong></td><td>无</td><td><code>realpath</code> 规范路径去重</td></tr>
+            </tbody>
+          </table>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 设计哲学</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">技能系统是对命令系统的<strong>超集扩展</strong>——旧的 <code>.md</code> 命令文件仍被兼容加载（通过 <code>loadedFrom: 'commands_DEPRECATED'</code>），但新功能只在 <code>/skills/</code> 格式下可用。</p>
+          </div>
+        </div>
+
+        <div id="concept-sources" class="reveal">
+          <h3 class="content-h3">1.2 技能来源层次</h3>
+          <p class="content-p">技能系统支持五个来源层次，优先级从高到低：</p>
+          <div class="skill-source-box">
+            <div class="skill-source-row">
+              <div class="skill-source-priority" style="background: #dc2626;">1</div>
+              <div class="skill-source-content">
+                <div class="skill-source-name">策略（managed）</div>
+                <div class="skill-source-path">~/.managed/.claude/skills/</div>
+                <div class="skill-source-desc">企业IT管控，用户不可覆盖</div>
+              </div>
+            </div>
+            <div class="skill-source-row">
+              <div class="skill-source-priority" style="background: #ea580c;">2</div>
+              <div class="skill-source-content">
+                <div class="skill-source-name">用户（user）</div>
+                <div class="skill-source-path">~/.claude/skills/</div>
+                <div class="skill-source-desc">个人工作流，跨所有项目生效</div>
+              </div>
+            </div>
+            <div class="skill-source-row">
+              <div class="skill-source-priority" style="background: #2563eb;">3</div>
+              <div class="skill-source-content">
+                <div class="skill-source-name">项目（project）</div>
+                <div class="skill-source-path">./.claude/skills/</div>
+                <div class="skill-source-desc">项目专属工作流，随代码库分发</div>
+              </div>
+            </div>
+            <div class="skill-source-row">
+              <div class="skill-source-priority" style="background: #7c3aed;">4</div>
+              <div class="skill-source-content">
+                <div class="skill-source-name">附加目录（add-dir）</div>
+                <div class="skill-source-path">--add-dir 指定的路径</div>
+                <div class="skill-source-desc">动态注入的额外工作流目录</div>
+              </div>
+            </div>
+            <div class="skill-source-row">
+              <div class="skill-source-priority" style="background: #059669;">5</div>
+              <div class="skill-source-content">
+                <div class="skill-source-name">内置（bundled）</div>
+                <div class="skill-source-path">二进制内嵌</div>
+                <div class="skill-source-desc">官方预置技能，随 Claude Code 分发</div>
+              </div>
+            </div>
+          </div>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>ℹ️</span> 特殊来源</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">另外还有两类特殊来源：<strong>MCP 技能</strong>（通过 Model Context Protocol 服务器提供的远程技能）和<strong>遗留命令</strong>（<code>/commands/</code> 目录的向下兼容加载）。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 技能系统全景架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "定义层"
+        BD["bundledSkills.ts<br/>内置技能注册"]
+        BFILE["bundled/index.ts<br/>内置技能初始化"]
+        SKILL_MD["用户 SKILL.md 文件"]
+    end
+    subgraph "加载层"
+        LSD["loadSkillsDir.ts<br/>多源并行加载"]
+        MCSB["mcpSkillBuilders.ts<br/>MCP 技能构建"]
+        CMD["commands.ts<br/>命令聚合缓存"]
+    end
+    subgraph "执行层"
+        ST["SkillTool.ts<br/>技能执行入口"]
+        PSC["processSlashCommand.tsx<br/>内联执行"]
+        RA["runAgent.ts<br/>Fork 子代理执行"]
+    end
+    subgraph "反馈层"
+        SUT["skillUsageTracking.ts<br/>使用统计"]
+        SCD["skillChangeDetector.ts<br/>变更热重载"]
+        SI["skillImprovement.ts<br/>改进建议"]
+    end
+    BD --> CMD
+    BFILE --> BD
+    SKILL_MD --> LSD
+    LSD --> CMD
+    MCSB --> LSD
+    CMD --> ST
+    ST --> PSC
+    ST --> RA
+    RA --> SUT
+    SKILL_MD -.->|"文件变更"| SCD
+    SCD -.->|"清除缓存"| CMD
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-design" class="reveal">
+          <h3 class="content-h3">2.2 核心设计思想</h3>
+          <div style="display: flex; flex-direction: column; gap: var(--space-md);">
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>1️⃣</span> 目录格式强制约束，而非选项</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">新版 <code>/skills/</code> 目录<strong>只支持</strong> <code>技能名/SKILL.md</code> 格式，不支持单个 <code>.md</code> 文件。目录格式允许技能携带附属文件，也为将来扩展留有空间（例如加入 <code>hooks/</code> 子目录）。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>2️⃣</span> realpath 去重而非 inode 去重</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">inode 在虚拟文件系统（NFS、ExFAT、容器）中可能不可靠（甚至全部为 0）。<code>realpath</code> 是文件系统无关的，只要路径可访问就能正确去重。这个决策专门为了修复 GitHub Issue #13893。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>3️⃣</span> Fork 执行隔离：技能不应污染主会话</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">当技能标注 <code>context: fork</code> 时，它在独立的子代理中运行。复杂的自动化任务（如"帮我做 code review 并开 PR"）需要大量工具调用，这些中间步骤不应污染用户的对话历史，结果只需返回摘要。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>4️⃣</span> 条件技能：按需激活而非全量加载</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>paths</code> 字段允许技能只在操作特定文件时才激活。如果一个大型 monorepo 有数十个子项目，每个子项目都有自己的技能，全量加载不仅浪费 token，还会干扰模型的判断。按文件路径延迟激活实现了"就近原则"。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码深度走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 内置技能 -->
+        <div id="code-bundled" class="reveal">
+          <h3 class="content-h3">3.1 bundledSkills.ts — 内置技能注册的惰性提取机制</h3>
+          <p class="content-p"><strong>文件路径</strong>：<code>src/skills/bundledSkills.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">💤 惰性初始化</span>
+            <span class="pattern-badge">🎭 装饰器模式</span>
+            <span class="pattern-badge">🛡️ 优雅降级</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/skills/bundledSkills.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="7,10,13,16"><code class="language-typescript">export function registerBundledSkill(definition: BundledSkillDefinition): void {
+  const { files } = definition
+  let skillRoot: string | undefined
+  let getPromptForCommand = definition.getPromptForCommand
+
+  if (files && Object.keys(files).length > 0) {
+    skillRoot = getBundledSkillExtractDir(definition.name)
+    // ② 闭包局部 memoization：Promise 级别的并发安全
+    // 关键：记忆的是 Promise 本身，而非结果
+    let extractionPromise: Promise&lt;string | null&gt; | undefined
+    const inner = definition.getPromptForCommand
+
+    getPromptForCommand = async (args, ctx) => {
+      // ③ ??= 懒初始化：首次调用才启动提取
+      extractionPromise ??= extractBundledSkillFiles(definition.name, files)
+      const extractedDir = await extractionPromise
+      const blocks = await inner(args, ctx)
+      // ④ 提取失败时优雅降级：技能仍可运行，只是没有 baseDir 前缀
+      if (extractedDir === null) return blocks
+      return prependBaseDir(blocks, extractedDir)
+    }
+  }
+  const command: Command = {
+    type: 'prompt',
+    name: definition.name,
+    source: 'bundled',
+    loadedFrom: 'bundled',
+    isHidden: !(definition.userInvocable ?? true),
+    getPromptForCommand,
+  }
+  bundledSkills.push(command)
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — <code>??=</code> Promise 惰性单例</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>extractionPromise ??= extractBundledSkillFiles(...)</code> 这一行同时实现了惰性初始化、单例复用、并发安全三件事。就像餐厅只雇一个人去采购食材——第一个需要食材的厨师出发采购，其他厨师等同一个人回来，而不是每人都跑一趟。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：多个并发调用会重复提取文件，造成竞态写入，最终文件内容可能不一致。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 五路并行加载 -->
+        <div id="code-load" class="reveal">
+          <h3 class="content-h3">3.2 loadSkillsDir.ts — 五路并行加载与 realpath 去重</h3>
+          <p class="content-p"><strong>文件路径</strong>：<code>src/skills/loadSkillsDir.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">⚡ 并行 I/O</span>
+            <span class="pattern-badge">🔄 Fork-Join 模式</span>
+            <span class="pattern-badge">🔑 有序去重</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/skills/loadSkillsDir.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="1,4,14,24,29"><code class="language-typescript">export const getSkillDirCommands = memoize(  // ① lodash memoize 按 cwd 缓存
+  async (cwd: string): Promise&lt;Command[]&gt; => {
+    // ② 五路并行加载：所有 I/O 同时发起，互不等待
+    const [
+      managedSkills,
+      userSkills,
+      projectSkillsNested,
+      additionalSkillsNested,
+      legacyCommands,
+    ] = await Promise.all([
+      isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_POLICY_SKILLS)
+        ? Promise.resolve([])
+        : loadSkillsFromSkillsDir(managedSkillsDir, 'policySettings'),
+      isSettingSourceEnabled('userSettings') && !skillsLocked
+        ? loadSkillsFromSkillsDir(userSkillsDir, 'userSettings')
+        : Promise.resolve([]),
+      projectSettingsEnabled
+        ? Promise.all(projectSkillsDirs.map(dir =>
+            loadSkillsFromSkillsDir(dir, 'projectSettings')))
+        : Promise.resolve([]),
+      // ... 附加目录 & 遗留命令
+    ])
+
+    // ③ 并行解析所有文件的规范路径（realpath）
+    const fileIds = await Promise.all(
+      allSkillsWithPaths.map(({ skill, filePath }) =>
+        skill.type === 'prompt'
+          ? getFileIdentity(filePath)  // realpath 去重
+          : Promise.resolve(null),
+      ),
+    )
+
+    // ④ 同步去重：先到先得（有序去重，保留高优先级来源）
+    const seenFileIds = new Map()
+    for (let i = 0; i &lt; allSkillsWithPaths.length; i++) {
+      const fileId = fileIds[i]
+      if (fileId &amp;&amp; !seenFileIds.has(fileId)) {
+        seenFileIds.set(fileId, skill.source)
+        deduplicatedSkills.push(skill)
+      }
+    }
+
+    return unconditionalSkills  // 只返回无条件技能
+  },
+)</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 并行 I/O + 同步去重的黄金组合</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：五路 <code>Promise.all</code> 就像让五个人同时去不同地方取快递，取回来后统一清点去重。先到先得的去重顺序（managed 最先，legacy 最后）隐式实现了优先级策略——managed 技能总是比用户技能优先级高。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>核心原则</strong>：不能把去重逻辑放在 <code>Promise.all</code> 内部（会有竞态），也不能串行计算 <code>fileIds</code>（太慢）。先并行收集，再同步处理——这是经典的"fork-join"模式。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 Frontmatter -->
+        <div id="code-frontmatter" class="reveal">
+          <h3 class="content-h3">3.3 Frontmatter 解析与条件激活</h3>
+          <p class="content-p"><strong>文件路径</strong>：<code>src/skills/loadSkillsDir.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📋 声明式控制</span>
+            <span class="pattern-badge">🎯 条件激活</span>
+          </div>
+          <table class="arch-table">
+            <thead>
+              <tr><th>字段</th><th>类型</th><th>用途</th><th>默认值</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>string</td><td>显示名（不影响调用名）</td><td>目录名</td></tr>
+              <tr><td><code>description</code></td><td>string</td><td>技能描述</td><td>Markdown 首段</td></tr>
+              <tr><td><code>allowed-tools</code></td><td>string[]</td><td>可用工具白名单</td><td>[]</td></tr>
+              <tr><td><code>context</code></td><td>'fork'|'inline'</td><td>执行隔离方式</td><td>inline</td></tr>
+              <tr><td><code>agent</code></td><td>string</td><td>指定使用的内置代理</td><td>无</td></tr>
+              <tr><td><code>model</code></td><td>string|'inherit'</td><td>模型覆盖</td><td>inherit</td></tr>
+              <tr><td><code>effort</code></td><td>string|number</td><td>推理预算等级</td><td>无</td></tr>
+              <tr><td><code>paths</code></td><td>string[]</td><td>条件激活路径模式</td><td>无（全量加载）</td></tr>
+              <tr><td><code>user-invocable</code></td><td>boolean</td><td>是否对用户可见</td><td>true</td></tr>
+              <tr><td><code>disable-model-invocation</code></td><td>boolean</td><td>禁止 AI 调用（纯用户命令）</td><td>false</td></tr>
+              <tr><td><code>shell</code></td><td>object</td><td>内联 Shell 配置</td><td>无</td></tr>
+              <tr><td><code>when_to_use</code></td><td>string</td><td>模型自动调用的触发条件</td><td>无</td></tr>
+            </tbody>
+          </table>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 设计点评 — Frontmatter 驱动行为而非仅描述</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              <code>context: fork</code>、<code>paths</code>、<code>effort</code>、<code>disable-model-invocation</code> 这些字段直接控制运行时行为，而不只是元数据。就像招聘 JD 不只是描述岗位，还规定了权限级别和工作范围。无效的 <code>effort</code> 值会被静默忽略并记录调试日志（容错而非报错），让技能文件的小错误不会导致整个系统崩溃。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 SkillTool -->
+        <div id="code-skilltool" class="reveal">
+          <h3 class="content-h3">3.4 SkillTool.ts — Fork 执行与权限决策</h3>
+          <p class="content-p"><strong>文件路径</strong>：<code>src/tools/SkillTool/SkillTool.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔒 分层权限</span>
+            <span class="pattern-badge">🔏 来源可信度</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/SkillTool/SkillTool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="5,10,14,16"><code class="language-typescript">async checkPermissions({ skill, args }, context): Promise&lt;PermissionDecision&gt; {
+  // 第一层：检查 deny 规则（优先于一切）
+  for (const [ruleContent, rule] of denyRules.entries()) {
+    if (ruleMatches(ruleContent)) {
+      return { behavior: 'deny', message: 'Skill execution blocked by permission rules' }
+    }
+  }
+
+  // 第二层：内置/官方技能自动放行（信任由来源决定）
+  const isBuiltIn = builtInCommandNames().has(commandName)
+  const isBundled = command?.source === 'bundled'
+  const isOfficialSkill = isOfficialMarketplaceSkill(command)
+  if (isBuiltIn || isBundled || isOfficialSkill) {
+    return { behavior: 'allow', updatedInput: { skill, args } }
+  }
+
+  // 第三层：检查 allow 规则
+  for (const [ruleContent, rule] of allowRules.entries()) {
+    if (ruleMatches(ruleContent)) return { behavior: 'allow', updatedInput: { skill, args } }
+  }
+
+  // 第四层：默认需要用户确认
+  return {
+    behavior: 'ask',
+    message: `Allow skill: ${commandName}?`,
+    ruleToSuggest: { tool: SkillTool, ruleValue: commandName }  // 建议添加的规则
+  }
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 权限弹窗自带"永久放行"建议</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：弹出权限询问时自动生成 <code>ruleToSuggest</code>，让用户能一键添加规则永久放行这个技能。就像银行 APP 问"允许位置权限"时顺带给个"下次不再询问"的选项——减少了用户的摩擦，同时保持了安全控制。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 Skillify -->
+        <div id="code-skillify" class="reveal">
+          <h3 class="content-h3">3.5 skillify.ts — 从对话中自动生成技能</h3>
+          <p class="content-p"><strong>文件路径</strong>：<code>src/skills/bundled/skillify.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🤖 AI 自沉淀</span>
+            <span class="pattern-badge">🎯 最小权限</span>
+            <span class="pattern-badge">🔐 门控功能</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/skills/bundled/skillify.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,6,9,10"><code class="language-typescript">export function registerSkillifySkill(): void {
+  if (process.env.USER_TYPE !== 'ant') return  // ① 功能门控：仅内部用户可用
+
+  registerBundledSkill({
+    name: 'skillify',
+    allowedTools: [
+      'Read', 'Write', 'Edit', 'Glob', 'Grep',
+      'AskUserQuestion',          // ② 关键：必须有交互权限
+      'Bash(mkdir:*)',            // ③ 只允许 mkdir，不允许任意 shell
+    ],
+    disableModelInvocation: true, // ④ 禁止 AI 直接调用（只能用户主动触发）
+    
+    async getPromptForCommand(args, context) {
+      const sessionMemory = (await getSessionMemoryContent()) ?? 'No session memory available.'
+      // ⑤ 只提取上次 compact 边界之后的用户消息
+      const userMessages = extractUserMessages(
+        getMessagesAfterCompactBoundary(context.messages),
+      )
+      // ⑥ 构建动态 Prompt（将会话上下文注入模板）
+      const prompt = SKILLIFY_PROMPT
+        .replace('{{sessionMemory}}', sessionMemory)
+        .replace('{{userMessages}}', userMessages.join('\n\n---\n\n'))
+        .replace('{{userDescriptionBlock}}', args ? `The user described this process as: "${args}"` : '')
+      return [{ type: 'text', text: prompt }]
+    },
+  })
+}</code></pre>
+          </div>
+          <div class="callout callout-info" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>📋</span> Skillify 的四轮采访设计</div>
+            <div style="font-size: var(--font-size-sm); color: var(--text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); margin-top: var(--space-md);">
+              <div><strong>Round 1</strong>：高层确认<br/>建议技能名和描述，确认高层目标</div>
+              <div><strong>Round 2</strong>：细节确认<br/>展示步骤清单，建议参数化方案</div>
+              <div><strong>Round 3</strong>：逐步骤细化<br/>每步成功标准，识别并发步骤</div>
+              <div><strong>Round 4</strong>：最终确认<br/>触发短语建议，when_to_use 内容</div>
+            </div>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — Skillify 的四轮采访哲学</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：Skillify 把"从对话沉淀技能"分解为 4 轮结构化采访，而不是一次性让 AI 生成完整技能。这就像产品经理做需求评审——分阶段确认，避免在错误方向上走太远。<code>Bash(mkdir:*)</code> 的精确工具限制体现了最小权限原则。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 使用统计 -->
+        <div id="code-score" class="reveal">
+          <h3 class="content-h3">3.6 skillUsageTracking.ts — 7天半衰期评分算法</h3>
+          <p class="content-p"><strong>文件路径</strong>：<code>src/utils/suggestions/skillUsageTracking.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📉 指数衰减</span>
+            <span class="pattern-badge">🛡️ 进程级防抖</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/suggestions/skillUsageTracking.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="5,9,15"><code class="language-typescript">// ① 进程级防抖缓存：60秒内同一技能不重复写入
+const SKILL_USAGE_DEBOUNCE_MS = 60_000
+
+export function getSkillUsageScore(skillName: string): number {
+  const usage = getGlobalConfig().skillUsage?.[skillName]
+  if (!usage) return 0
+
+  // ② 指数衰减：7天后分值减半
+  const daysSinceUse = (Date.now() - usage.lastUsedAt) / (1000 * 60 * 60 * 24)
+  const recencyFactor = Math.pow(0.5, daysSinceUse / 7)
+  // Math.pow(0.5, d/7):
+  //   d=0天  → 1.0 （今天使用）
+  //   d=7天  → 0.5 （一周前使用）
+  //   d=30天 → 0.05（一个月前使用）
+
+  // ③ 最小保底因子 0.1：防止重度使用的技能彻底沉底
+  return usage.usageCount * Math.max(recencyFactor, 0.1)
+}</code></pre>
+          </div>
+          <table class="score-table" style="margin-top: var(--space-lg);">
+            <thead>
+              <tr><th>场景</th><th>usageCount</th><th>距今天数</th><th>recencyFactor</th><th>最终得分</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>今天首次使用</td><td>1</td><td>0</td><td>1.00</td><td style="font-weight:700; color: var(--accent-green);">1.0</td></tr>
+              <tr><td>一周内5次</td><td>5</td><td>3</td><td>0.71</td><td style="font-weight:700; color: var(--accent-green);">3.5</td></tr>
+              <tr><td>一个月内100次</td><td>100</td><td>30</td><td>≤0.1</td><td style="font-weight:700; color: var(--accent-blue);">10.0</td></tr>
+              <tr><td>今天使用10次</td><td>10</td><td>0</td><td>1.00</td><td style="font-weight:700; color: var(--accent-blue);">10.0</td></tr>
+            </tbody>
+          </table>
+          <div class="callout callout-tip" style="margin-top: var(--space-md);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 7天半衰期的工程智慧</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：指数衰减 + 保底因子 0.1 的组合，让评分算法既重视最近使用频率，又不让重度使用过的技能彻底沉底。60 秒防抖是根据算法精度倒推的工程决策——7天半衰期下，分钟级粒度已无意义，60 秒窗口避免了高频调用时的磁盘写入风暴。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 驾驭工程视角</h3>
+          <p class="content-p">技能系统是 Claude Code 中"能力扩展"与"能力约束"并重的典型模块：</p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🔒 约束</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• gitignore 安全检查防止 <code>node_modules</code> 中的恶意技能注入</li>
+                <li>• MCP 技能禁用内联 Shell（远程来源不可信）</li>
+                <li>• 来源可信度梯度（bundled > official > 自定义）让安全默认是"询问用户"</li>
+                <li>• <code>disableModelInvocation</code> 防止 AI 误触发元工具</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🚀 增强</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• 五路并行加载 + realpath 去重让大型 monorepo 的技能加载速度接近单次 I/O</li>
+                <li>• Promise 惰性单例让内置技能文件提取只发生一次，并发安全</li>
+                <li>• 条件激活（<code>paths</code> 字段）让技能按需出现，不污染无关场景的系统提示</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-purple); grid-column: 1 / -1;">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🎯 编排</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• Frontmatter 体系（14+ 字段）让技能作者以声明式方式控制执行行为，无需深入框架</li>
+                <li>• Fork 执行隔离让复杂自动化任务的中间步骤不污染用户对话历史</li>
+                <li>• 使用统计的 7 天半衰期评分让最近活跃的技能在建议列表中自然排名靠前</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+          <div style="display: flex; flex-direction: column; gap: var(--space-md);">
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>1️⃣</span> 来源可信度分层是安全的基础</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">用户编写的扩展默认需要确认，官方扩展自动放行——这种设计让系统默认安全，同时不给可信来源增加摩擦。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>2️⃣</span> 并行 I/O + 同步去重是聚合多源数据的标准模式</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">先 <code>Promise.all</code> 并发收集，再同步处理（去重、过滤），避免了串行的慢和并发的竞态。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>3️⃣</span> 扩展的元数据要驱动行为，不只是描述</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Frontmatter 的 <code>context: fork</code>、<code>paths</code>、<code>effort</code> 等字段直接控制运行时行为，这是比"配置文件"更深度的集成。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>4️⃣</span> 防御远程内容的方式是"最小功能集"</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">MCP 技能不是被完全禁止，而是禁止了最危险的能力（内联 Shell 执行）。给予最小必要权限，而非全部或全无。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>5️⃣</span> 高频变更场景需要防抖</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">文件监听器在 IDE 保存时可能触发数十次事件，防抖将这些事件合并为单次处理。任何订阅文件系统变更的 AI 应用都应该考虑这个问题。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：为什么 <code>/skills/</code> 目录只支持目录格式，不支持单个 <code>.md</code> 文件？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：目录格式允许技能携带附属文件（参考手册、脚本、数据文件等），存放在同一目录下通过 <code>files</code> 字段引用。单文件格式无法携带附属资产，技能的功能就被限制在提示词文本本身。强制目录格式也为将来扩展留有空间（如加入 <code>hooks/</code> 子目录、<code>tests/</code> 子目录），避免了"有时有附属文件、有时没有"的格式歧义。向下兼容的旧 <code>/commands/</code> 目录仍支持单文件格式。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：<code>realpath</code> 去重相比 <code>inode</code> 去重有哪些优缺点？在什么文件系统上两者会产生不同结果？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>realpath</code> 优点：文件系统无关，只要路径可访问就能正确去重；可以处理符号链接（将多个符号链接指向同一文件的情况正确去重）。缺点：跨文件系统的硬链接无法去重。<code>inode</code> 的问题：在 NFS 挂载（inode 可能冲突）、ExFAT（不支持 inode）、Docker 容器（overlay 文件系统）、Windows（NTFS 的 inode 语义不同）等场景下行为不可靠，甚至 inode 全为 0。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：条件技能（<code>paths</code> 字段）为什么在激活后不会因为缓存清除而重置？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>activatedConditionalSkillNames</code> 是一个模块级的 <code>Set</code>，记录所有已激活过的技能名称。当 <code>getSkillDirCommands</code> 缓存被清除后重新加载时，它会检查 <code>activatedConditionalSkillNames</code>——如果技能名已在其中，就不会再将其放回 <code>conditionalSkills</code>（待激活池），而是直接放入无条件技能列表返回。这个 Set 的生命周期是进程级别的，重启后清空。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：Skillify 的 <code>disableModelInvocation: true</code> 和 <code>allowedTools: ['AskUserQuestion', ...]</code> 组合，体现了什么设计原则？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：这个组合体现了<strong>最小权限原则</strong>和<strong>明确意图表达</strong>两个原则。<code>disableModelInvocation: true</code> 确保只有用户主动触发才能启动 Skillify（防止 AI 在执行任务时误判"现在是个好时机把当前工作流沉淀为技能"，导致任务中断）；<code>Bash(mkdir:*)</code> 的精确限制确保 Skillify 只能创建目录，不能运行任意 shell 命令（降低被恶意输入利用的风险）。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q5：<code>getSkillDirCommands</code> 使用 <code>memoize</code> 缓存结果，但当技能文件变更时如何失效？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：技能文件变更由 <code>skillChangeDetector.ts</code> 监听（使用 chokidar 文件监听器），变更事件经过 50ms 防抖合并后，调用 <code>clearSkillCaches()</code> 清除 <code>getSkillDirCommands</code> 的 memoize 缓存。然后通过 <code>skillsLoaded.emit()</code> 事件通知消费者重新加载技能列表。这是"主动失效"模式：文件系统事件驱动的精确失效，既保证了实时性，又避免了不必要的重新加载。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q6（进阶）：比较 <code>executeForkedSkill</code> 中的进度上报逻辑和 <code>AgentTool</code> 的进度上报逻辑，有何相似之处？这揭示了什么架构规律？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：两者都使用了相同的模式：通过 <code>onProgress</code> 回调上报有工具调用内容的消息（<code>hasToolContent</code> 过滤），并使用 <code>agentId</code> 标识来源，上报的消息格式也高度相似。这揭示了一个架构规律：<strong>技能和代理在执行层面共享相同的基础设施</strong>——它们都通过 <code>runAgent</code> 运行子代理，都产生相同格式的进度消息，都需要区分"有意义的中间状态"和"噪音"。这种一致性让 UI 层可以用统一的代码展示来自技能和代理的进度，而不需要区分来源。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶探索方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>🔌</span> MCP 技能可信度模型</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">如果要引入"可信 MCP 服务器"的概念（类似 SSH 已知主机），应如何扩展权限模型？</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>📦</span> 技能版本管理</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">当前 <code>version</code> 字段只是元数据，没有版本检查逻辑。如果要实现"技能升级检测"，需要哪些基础设施？</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>⚡</span> 并发技能执行</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">当前技能执行是串行的。在什么架构改变下，技能可以并发执行？需要解决哪些状态隔离问题？</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔍</span> 技能发现功能</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">基于 <code>skillUsageTracking.ts</code> 的数据，如何构建一个"技能发现"功能？让系统主动建议用户可能感兴趣但未使用的技能？</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">技能系统是 Claude Code 可扩展能力框架的核心，体现了多个精妙的工程设计：</p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>向下兼容</strong>：旧命令文件无缝兼容，新技能格式扩展能力</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>默认安全</strong>：自定义技能需要权限确认，来源越可信越少摩擦</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>就近原则</strong>：条件技能按文件路径激活，避免全量加载污染上下文</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>执行隔离</strong>：Fork 模式保护主会话，技能的工具调用不影响用户视角</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="09.html" class="nav-prev">← 上一课：智能代理工具与多代理协作</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="11.html" class="nav-next">下一课：状态管理系统 →</a>
+      </nav>
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="09.html">← 第09课</a>
+        <a href="../index.html#phases">课程总览</a>
+        <a href="11.html">第11课 →</a>
+      </nav>
+      <p class="footer-copy">第10课 · 技能系统 — 可扩展的能力框架 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+</body>
+</html>

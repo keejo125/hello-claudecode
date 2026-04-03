@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第12课：React + Ink 终端 UI 架构 | Claude Code 教程</title>
+  <meta name="description" content="深入理解 Ink 如何将 React 组件树转换为字符缓冲区，掌握双缓冲、损坏区域、增量渲染等终端 UI 性能优化策略。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; max-width: 1400px; margin: 0 auto; padding: 0; align-items: start; }
+    .lesson-toc { position: sticky; top: 76px; height: calc(100vh - 76px); overflow-y: auto; padding: var(--space-xl) var(--space-lg); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-cyan); margin-bottom: var(--space-md); }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a { display: block; padding: 6px 10px; font-size: 13px; color: var(--text-secondary); border-radius: var(--radius-sm); border-left: 2px solid transparent; transition: all var(--transition-fast); line-height: 1.4; }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-md); }
+    .code-anno-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .code-anno-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.6; }
+    .code-anno-table td:first-child { font-family: var(--font-code); font-size: 12px; color: var(--accent-orange); white-space: nowrap; min-width: 60px; }
+    .code-anno-table td:nth-child(2) { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); min-width: 200px; }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+    .terminal-demo { background: #1a1a2e; border-radius: var(--radius-md); padding: var(--space-lg); font-family: var(--font-code); font-size: 13px; color: #e2e8f0; margin: var(--space-lg) 0; overflow-x: auto; border: 1px solid #2d2d4e; }
+    .terminal-demo .green { color: #4ade80; }
+    .terminal-demo .dim { color: #64748b; }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第四阶段 · 深度架构解析</span>
+      <span class="sep">/</span>
+      <span>第12课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 12 · PHASE 04</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      React + Ink<br/>
+      <span class="gradient-text">终端 UI 架构</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第四阶段 · 深度架构解析</span>
+      <span class="tag tag-orange">⏱ 建议 120～150 分钟</span>
+      <span class="tag tag-blue">前置：第11课 · 第3课</span>
+      <span class="tag tag-green">Reconciler · Yoga · 双缓冲 · 虚拟滚动</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解 React Reconciler 如何在终端环境中工作——Ink 如何将 React 组件树转换为字符缓冲区</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握 Ink 渲染管道的完整流程：React 提交 → Yoga 布局 → DOM 渲染 → 屏幕缓冲 → 差异比较 → 终端输出</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>分析双缓冲（double-buffering）、损坏区域（damage region）、增量渲染等终端 UI 特有的性能优化策略</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>熟悉 REPL 界面的组件层次结构与虚拟滚动的实现原理</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>理解终端特有约束（光标管理、Alt 屏幕、宽字符、ANSI 序列）对架构设计的影响</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-diff">1.1 Web vs 终端渲染</a></div>
+        <div class="toc-item sub"><a href="#concept-terms">1.2 关键术语</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-pipeline">2.1 渲染管道总览</a></div>
+        <div class="toc-item sub"><a href="#arch-reconciler">2.2 自定义 Reconciler</a></div>
+        <div class="toc-item sub"><a href="#arch-doublebuf">2.3 双缓冲的意义</a></div>
+        <div class="toc-item sub"><a href="#arch-repl">2.4 REPL 组件层次</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码走查</a></div>
+        <div class="toc-item sub"><a href="#code-reconciler">3.1 Reconciler 宿主配置</a></div>
+        <div class="toc-item sub"><a href="#code-renderloop">3.2 Ink 渲染循环</a></div>
+        <div class="toc-item sub"><a href="#code-renderer">3.3 DOM 树到屏幕缓冲</a></div>
+        <div class="toc-item sub"><a href="#code-screen">3.4 屏幕缓冲存储</a></div>
+        <div class="toc-item sub"><a href="#code-vml">3.5 虚拟消息列表</a></div>
+        <div class="toc-item sub"><a href="#code-dialog">3.6 Dialog 与 TextInput</a></div>
+        <div class="toc-item"><a href="#perf">§4 性能优化链路</a></div>
+        <div class="toc-item"><a href="#harness">§5 Harness Engineering</a></div>
+        <div class="toc-item"><a href="#quiz">§6 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-diff" class="reveal">
+          <h3 class="content-h3">1.1 Web 浏览器 vs 终端渲染的根本差异</h3>
+          <table class="compare-table">
+            <thead><tr><th>维度</th><th>Web 浏览器（React DOM）</th><th>终端（React + Ink）</th></tr></thead>
+            <tbody>
+              <tr><td>坐标系</td><td>像素级坐标系</td><td>字符网格坐标系（行×列）</td></tr>
+              <tr><td>渲染加速</td><td>GPU 加速合成</td><td>ANSI 转义序列驱动</td></tr>
+              <tr><td>布局引擎</td><td>CSS 盒模型 + Flexbox（浏览器原生）</td><td>Yoga（Flexbox 的 C++ 实现，WASM/native）</td></tr>
+              <tr><td>DOM 类型</td><td>HTML 节点树</td><td>自定义 DOMElement 节点树</td></tr>
+              <tr><td>脏区域处理</td><td>浏览器自动处理</td><td>Ink 手动追踪 damage 区域</td></tr>
+              <tr><td>滚动实现</td><td>浏览器原生</td><td>需自行实现（DECSTBM 或重绘）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="concept-terms" class="reveal">
+          <h3 class="content-h3">1.2 关键术语辨析</h3>
+          <table class="arch-table">
+            <thead><tr><th>术语</th><th>定义</th></tr></thead>
+            <tbody>
+              <tr><td><code>React Reconciler</code></td><td>React 的核心算法，负责比较虚拟 DOM 差异并提交变更。Ink 通过 <code>react-reconciler</code> 包自定义了宿主环境</td></tr>
+              <tr><td><code>Yoga</code></td><td>Facebook 开发的 Flexbox 布局引擎（C++/WASM），用于计算每个 DOM 节点的精确尺寸和位置</td></tr>
+              <tr><td>Screen Buffer（屏幕缓冲）</td><td>字符网格的内存表示，每个单元格存储字符、样式 ID、超链接 ID 等。Ink 使用双缓冲（front/back）实现高效差异比较</td></tr>
+              <tr><td>LogUpdate</td><td>终端差异输出工具，对比前后两帧，只输出变化的行，避免整屏重刷</td></tr>
+              <tr><td>Damage Region（损坏区域）</td><td>上一帧到本帧之间可能发生变化的区域。只对损坏区域进行差异比较，避免全屏扫描</td></tr>
+              <tr><td>ANSI 转义序列</td><td>终端控制码，用于移动光标、设置颜色、清除行等操作（如 <code>\x1b[2J</code> 清屏）</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-pipeline" class="reveal">
+          <h3 class="content-h3">2.1 Ink 渲染管道总览</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant React as React（协调器）
+    participant Reconciler as reconciler.ts
+    participant Ink as Ink 主类
+    participant Yoga as Yoga 布局引擎
+    participant Renderer as renderer.ts
+    participant Output as output.ts
+    participant Screen as screen.ts（屏幕缓冲）
+    participant LogUpdate as LogUpdate（差异输出）
+    participant Term as 终端（stdout）
+
+    React->>Reconciler: 提交变更（commitUpdate/appendChildToContainer等）
+    Reconciler->>Ink: resetAfterCommit() 触发重新渲染
+    Ink->>Ink: scheduleRender()（节流，FRAME_INTERVAL_MS）
+    Ink->>Yoga: calculateLayout()（根节点布局）
+    Yoga-->>Ink: 每个节点的 x/y/width/height
+    Ink->>Renderer: render(frontFrame, backFrame, options)
+    Renderer->>Output: renderNodeToOutput(rootNode, output)
+    Output->>Screen: write(x, y, text, style)
+    Renderer-->>Ink: Frame{screen, cursor, viewport}
+    Ink->>Ink: 叠加选择高亮 / 搜索高亮
+    Ink->>LogUpdate: 差异比较（front vs back）
+    LogUpdate->>Term: 输出优化后的 ANSI 补丁序列
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-reconciler" class="reveal">
+          <h3 class="content-h3">2.2 为什么需要自定义 Reconciler？</h3>
+          <p class="content-p">React 的核心是协调算法（Fiber），但它将"如何操作 DOM"抽象为<strong>宿主配置（Host Config）</strong>。<code>react-dom</code> 是 Web 宿主，<code>react-native</code> 是移动端宿主，Ink 则是<em>终端宿主</em>。</p>
+
+          <div class="grid-2" style="gap: var(--space-lg); margin: var(--space-lg) 0;">
+            <div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary); font-weight: 700; margin-bottom: var(--space-sm);">开发者写的组件（看起来像 React Web）：</p>
+              <div class="code-block" style="margin-bottom: 0;">
+                <div class="code-block-header">
+                  <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+                  <span class="code-block-lang">TSX</span>
+                  <button class="code-copy-btn" aria-label="复制代码">复制</button>
+                </div>
+                <pre><code class="language-tsx">function MyComponent() {
+  return (
+    &lt;Box flexDirection="column"
+         borderStyle="round"&gt;
+      &lt;Text color="green"&gt;
+        Hello Terminal!
+      &lt;/Text&gt;
+      &lt;Text dimColor&gt;
+        Powered by Ink
+      &lt;/Text&gt;
+    &lt;/Box&gt;
+  )
+}</code></pre>
+              </div>
+            </div>
+            <div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary); font-weight: 700; margin-bottom: var(--space-sm);">最终输出到终端（字符艺术 + ANSI 颜色）：</p>
+              <div class="terminal-demo">
+                <div class="green">╭──────────────────╮</div>
+                <div class="green">│ <span style="color:#4ade80">Hello Terminal!</span>  │</div>
+                <div class="green">│ <span class="dim">Powered by Ink</span>   │</div>
+                <div class="green">╰──────────────────╯</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 设计点评 — 自定义 Reconciler：用 React 的"插槽"接管终端</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：Ink 没有重写 React，而是把 React 变成了一个"语言框架"——只替换底层"输出目标"。就像同一套乐谱，可以交给交响乐团演奏，也可以交给电子合成器演奏，写曲子的人不用改任何东西。<code>resetAfterCommit</code> 这个钩子就是"乐谱交接口"，React 弹完一个小节就交给 Ink 决定怎么输出。
+            </p>
+          </div>
+        </div>
+
+        <div id="arch-doublebuf" class="reveal">
+          <h3 class="content-h3">2.3 双缓冲的意义</h3>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>🖥️</span> 双缓冲工作原理</div>
+            <pre style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-md); font-size: 13px; overflow-x: auto; margin-top: var(--space-sm);">front frame（前帧）= 上一次实际写入终端的内容
+back frame（后帧）= 本次新渲染的内容
+
+差异比较：
+  对每一行，比较 front 和 back 的单元格
+  只输出不同的行（避免全屏重刷）
+
+Damage Region 优化：
+  只对"可能变化"的区域做精确比较
+  未标记为 dirty 的区域直接从 front frame 复用（blit 操作）</pre>
+          </div>
+        </div>
+
+        <div id="arch-repl" class="reveal">
+          <h3 class="content-h3">2.4 REPL 界面的组件层次</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    main["main.tsx<br/>应用入口/Ink 启动"] --> REPL["REPL.tsx<br/>顶层 REPL 屏幕"]
+    REPL --> Messages["Messages.tsx<br/>消息渲染与过滤"]
+    REPL --> PromptInput["PromptInput.tsx<br/>输入框+底部栏"]
+    Messages --> VML["VirtualMessageList.tsx<br/>虚拟滚动消息列表"]
+    VML --> SB["ScrollBox.tsx<br/>滚动容器"]
+    REPL --> Ink["ink.tsx<br/>Ink 渲染引擎"]
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 Reconciler -->
+        <div id="code-reconciler" class="reveal">
+          <h3 class="content-h3">3.1 React Reconciler 的宿主配置</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/ink/reconciler.ts（精简版）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">const reconcilerConfig = {
+  // 1. 创建实例：&lt;Box&gt; 创建 DOMElement，&lt;Text&gt; 创建文本节点
+  createInstance(type, props, rootContainer, hostContext) {
+    const node = createNode(type)
+    for (const [key, value] of Object.entries(props)) {
+      applyProp(node, key, value)
+    }
+    return node
+  },
+
+  // 2. 创建文本节点
+  createTextInstance(text) {
+    return createTextNode(text)
+  },
+
+  // 3. 提交阶段：属性更新（React diff 后调用）
+  commitUpdate(node, updatePayload, type, oldProps, newProps) {
+    for (const [key, value] of Object.entries(updatePayload)) {
+      applyProp(node, key, value)  // 增量更新属性
+    }
+  },
+
+  // 4. 提交阶段：将子节点追加到容器
+  appendChildToContainer(container, child) {
+    appendChildNode(container, child)
+    markDirty(child)  // 标记 Yoga 节点需要重新计算布局
+  },
+
+  // 5. 提交完成后触发渲染（核心钩子！）
+  resetAfterCommit(container) {
+    container.isLayoutDirty = true
+    // Ink 类内部会检查这个标志并调度 render
+  }
+}
+
+// applyProp：将 React props 分发到不同处理器
+function applyProp(node: DOMElement, key: string, value: unknown): void {
+  if (key === 'children') return
+
+  if (key === 'style') {
+    setStyle(node, value as Styles)
+    if (node.yogaNode) {
+      applyStyles(node.yogaNode, value as Styles)  // 同步到 Yoga 节点
+    }
+    return
+  }
+
+  if (EVENT_HANDLER_PROPS.has(key)) {
+    setEventHandler(node, key, value)
+    return
+  }
+
+  setAttribute(node, key, value as DOMNodeAttribute)
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 关键洞察</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;"><code>resetAfterCommit</code> 是 React 提交阶段完成后的钩子，Ink 在这里触发重新渲染。这意味着每次 React 状态更新都会导致 Ink 重新渲染，但通过<strong>节流（throttle）</strong>限制帧率，避免过于频繁的终端写入。</p>
+          </div>
+        </div>
+
+        <!-- 3.2 渲染循环 -->
+        <div id="code-renderloop" class="reveal">
+          <h3 class="content-h3">3.2 Ink 主类的渲染循环</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/ink/ink.tsx（精简版）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export default class Ink {
+  private frontFrame: Frame  // 上一帧（已写入终端）
+  private backFrame: Frame   // 本帧（新渲染）
+  private scheduleRender: () => void  // 节流后的渲染调度
+
+  constructor(options: Options) {
+    // 节流渲染：最小帧间隔 FRAME_INTERVAL_MS（约16ms，60fps）
+    this.scheduleRender = throttle(
+      () => this.onRender(),
+      FRAME_INTERVAL_MS,
+      { leading: false, trailing: true }  // 尾部节流：确保最后一次变更被渲染
+    )
+
+    // 创建 React FiberRoot（并发模式）
+    this.container = reconciler.createContainer(
+      this.rootNode, ConcurrentRoot, null, false, null, '', {}, null,
+    )
+  }
+
+  private onRender(): void {
+    if (this.isUnmounted || this.isPaused) return
+
+    // Step 1: 计算 Yoga 布局
+    this.rootNode.yogaNode?.calculateLayout(
+      this.terminalColumns, undefined, yoga.DIRECTION_LTR,
+    )
+
+    // Step 2: 渲染 DOM 树到屏幕缓冲（Back Buffer）
+    const newFrame = this.renderer({
+      frontFrame: this.frontFrame,  // 前帧用于 blit 优化
+      backFrame: this.backFrame,
+      isTTY: this.terminal.isTTY,
+      terminalWidth: this.terminalColumns,
+    })
+
+    // Step 3: 叠加搜索高亮和选择高亮
+    if (this.searchHighlight) applySearchHighlight(newFrame.screen, this.searchHighlight)
+    if (hasSelection(this.selectionState)) applySelectionOverlay(newFrame.screen, this.selectionState, newFrame)
+
+    // Step 4: 差异比较 + 输出（LogUpdate）
+    const patches = writeDiffToTerminal(this.frontFrame, newFrame, this.terminal, this.log)
+
+    // Step 5: 交换缓冲区
+    this.frontFrame = newFrame
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 尾部节流：只输出最终态</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>trailing: true</code> 的节流策略就像快递员派件——一天内你下了 10 个订单，快递员不会送 10 次，而是攒到一起只送一次。对终端渲染来说，用户根本不需要看中间帧，最终状态才是有效信息。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：每次 <code>setState</code> 都立即渲染，流式 AI 输出（每秒数十次 token）会把终端写入带宽打满，还可能出现可见的闪烁和渲染撕裂。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 Renderer -->
+        <div id="code-renderer" class="reveal">
+          <h3 class="content-h3">3.3 Renderer — DOM 树到屏幕缓冲</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/ink/renderer.ts（核心逻辑）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export default function createRenderer(node: DOMElement, stylePool: StylePool): Renderer {
+  // ← 关键优化：Output 对象跨帧复用，保留 charCache（字符缓存）
+  let output: Output | undefined
+
+  return options => {
+    const { frontFrame, backFrame, terminalWidth, terminalRows } = options
+
+    const computedHeight = node.yogaNode?.getComputedHeight()
+    const computedWidth = node.yogaNode?.getComputedWidth()
+    if (!node.yogaNode || !Number.isFinite(computedHeight) || computedHeight &lt; 0) {
+      return emptyFrame(terminalWidth, terminalRows, stylePool)
+    }
+
+    const width = Math.floor(computedWidth)
+    // Alt-screen 模式下高度固定为终端行数（防止溢出）
+    const height = options.altScreen ? terminalRows : Math.floor(computedHeight)
+
+    // 重置或创建 Output 对象
+    if (output) {
+      output.reset(backFrame.screen)  // 复用，只清空写入队列
+    } else {
+      output = new Output(backFrame.screen, frontFrame.screen, stylePool)
+    }
+
+    // 渲染 DOM 树到 Output（递归遍历节点）
+    renderNodeToOutput(node, output, {
+      offsetX: 0, offsetY: 0,
+      clip: { x1: 0, y1: 0, x2: width, y2: height },
+      transformers: [],
+    })
+
+    return {
+      screen: backFrame.screen,
+      viewport: { width, height: terminalRows },
+      cursor: { x: cursorX, y: cursorY, visible: cursorVisible },
+    }
+  }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — Output 跨帧复用：用记忆换速度</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：Output 对象不随帧销毁，而是保留内部的 <code>charCache</code>，就像办公室里那本翻旧了的电话本——历史消息内容不变，ANSI 序列计算一次就永久复用，越用越快。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：每帧都要重新把所有字符转换成 ANSI 序列，渲染 100 条历史消息等于做 100 次无用功，渲染延迟随消息数线性增长。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 屏幕缓冲 -->
+        <div id="code-screen" class="reveal">
+          <h3 class="content-h3">3.4 屏幕缓冲的高效存储</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/ink/screen.ts（精简版）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 每个单元格用 2 个 Int32 存储（64 位打包）
+// Int32[0]: 高16位=字符索引, 低16位=样式ID
+// Int32[1]: 高16位=超链接ID, 低16位=宽度标记
+
+export function createScreen(width: number, height: number, stylePool: StylePool): Screen {
+  const cellCount = width * height
+  const cells = new Int32Array(cellCount * 2)  // 打包存储
+  const cells64 = new BigInt64Array(cells.buffer)  // 64位视图，便于整行比较
+
+  const damage: Rectangle = { x1: 0, y1: 0, x2: 0, y2: 0 }
+
+  return {
+    width, height, cells, cells64, damage,
+    charPool: new CharPool(),       // 字符字符串池化
+    hyperlinkPool: new HyperlinkPool(),
+    stylePool,
+    noSelect: new Uint8Array(cellCount),
+    softWrap: new Int32Array(height),
+  }
+}
+
+// CharPool：字符串去重池
+class CharPool {
+  private chars: string[] = ['']  // index 0 = 空字符
+  private index = new Map&lt;string, number&gt;()
+
+  intern(str: string): number {
+    let id = this.index.get(str)
+    if (id === undefined) {
+      id = this.chars.length
+      this.chars.push(str)
+      this.index.set(str, id)
+    }
+    return id
+  }
+
+  get(id: number): string { return this.chars[id] ?? '' }
+}</code></pre>
+          </div>
+
+          <table class="arch-table" style="margin-top: var(--space-lg);">
+            <thead><tr><th>技术</th><th>作用</th><th>好处</th></tr></thead>
+            <tbody>
+              <tr><td><code>Int32Array</code> 打包存储</td><td>每格 8 字节（而非对象）</td><td>内存连续，缓存友好</td></tr>
+              <tr><td><code>BigInt64Array</code> 视图</td><td>整格 64 位比较</td><td>一次操作比较全部元数据</td></tr>
+              <tr><td><code>CharPool</code> 字符串池化</td><td>相同字符共享 ID</td><td>减少字符串内存和比较开销</td></tr>
+              <tr><td><code>StylePool</code> 样式池化</td><td>ANSI 序列缓存</td><td>避免重复生成颜色序列</td></tr>
+              <tr><td>Damage Region</td><td>标记变化区域</td><td>只扫描可能变化的区域</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — TypedArray + 字符串池化：向内存要性能</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：用 <code>Int32Array</code> 存屏幕单元格，内存布局是连续的——CPU 预取缓存时能一次捞一整行。<code>CharPool</code> 字符串池化把"每格存字符串"变成"每格存 ID"，重复字符只在内存里存一份。这就是为什么 Ink 处理 200×50 的终端比你想象的快。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 虚拟消息列表 -->
+        <div id="code-vml" class="reveal">
+          <h3 class="content-h3">3.5 虚拟消息列表（VirtualMessageList）</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/components/VirtualMessageList.tsx（架构要点）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-tsx">function VirtualMessageList({ messages, scrollRef }) {
+  // useVirtualScroll：核心虚拟化 Hook
+  const { range, topSpacer, bottomSpacer, updateHeights } = useVirtualScroll({
+    itemCount: messages.length,
+    getItemHeight: (index) => heightCache.current[index] ?? 0,
+    scrollTop: scrollRef.current?.scrollTop ?? 0,
+    viewportHeight: scrollRef.current?.viewportHeight ?? 0,
+  })
+
+  // 只渲染可视区域的消息（range.start 到 range.end）
+  const visibleMessages = messages.slice(range.start, range.end)
+
+  return (
+    &lt;Box flexDirection="column"&gt;
+      {/* 顶部占位符：代替未渲染的上方消息 */}
+      &lt;Box height={topSpacer} /&gt;
+
+      {visibleMessages.map((msg, idx) => (
+        &lt;MessageItem
+          key={msg.id}
+          message={msg}
+          onHeightMeasured={(h) => {
+            const realIdx = range.start + idx
+            if (heightCache.current[realIdx] !== h) {
+              heightCache.current[realIdx] = h
+              updateHeights()  // 触发虚拟滚动重新计算
+            }
+          }}
+        /&gt;
+      ))}
+
+      {/* 底部占位符：代替未渲染的下方消息 */}
+      &lt;Box height={bottomSpacer} /&gt;
+    &lt;/Box&gt;
+  )
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 虚拟滚动：终端里的"窗户"技巧</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：虚拟滚动就像火车窗户——窗外的风景无限长，但你只看得到窗口大小那一片。<code>VirtualMessageList</code> 只渲染可见区域的消息，顶部和底部用"占位 Box"撑开空间，让 Yoga 以为所有消息都在那里。从用户角度看完全无感，但 Yoga 和屏幕缓冲只处理了 10% 的数据量。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：100 条消息全量渲染，Yoga 要计算 100 个节点的 flexbox 布局；300 条消息时帧率明显下降；随着对话越来越长，CLI 会越来越卡。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 Dialog 与 TextInput -->
+        <div id="code-dialog" class="reveal">
+          <h3 class="content-h3">3.6 设计系统组件库——Dialog 与 BaseTextInput</h3>
+
+          <p class="content-p">Claude Code 在 Ink 基础之上构建了完整的设计系统（<code>src/components/design-system/</code>），以下剖析两个核心组件的设计决策。</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/components/design-system/Dialog.tsx（核心逻辑）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">type DialogProps = {
+  title: React.ReactNode
+  children: React.ReactNode
+  onCancel: () => void
+  color?: keyof Theme
+  /**
+   * 控制 Dialog 内置的取消键（Esc/n）和退出键（Ctrl+C/D）是否激活。
+   * 当嵌入的文本输入框正在编辑时设为 false，让这些键到达输入框。
+   * 默认为 true。
+   */
+  isCancelActive?: boolean
+}
+
+export function Dialog({ title, children, onCancel, isCancelActive = true }) {
+  // 双重退出保护：第一次 Ctrl+C 显示"再按一次退出"提示
+  const exitState = useExitOnCtrlCDWithKeybindings(undefined, undefined, isCancelActive)
+
+  // 键位绑定到 "Confirmation" 上下文（优先级高于其他上下文）
+  useKeybinding("confirm:no", onCancel, {
+    context: "Confirmation",
+    isActive: isCancelActive    // ← isCancelActive 为 false 时，键位让渡给子组件
+  })
+
+  return (
+    &lt;Pane&gt;
+      &lt;Text bold color={color}&gt;{title}&lt;/Text&gt;
+      {children}
+    &lt;/Pane&gt;
+  )
+}</code></pre>
+          </div>
+
+          <table class="arch-table" style="margin-top: var(--space-lg);">
+            <thead><tr><th>机制</th><th>实现</th><th>目的</th></tr></thead>
+            <tbody>
+              <tr><td><code>useDeclaredCursor</code></td><td>向 Ink 声明光标位置而非直接操作</td><td>避免多个组件竞争光标控制权</td></tr>
+              <tr><td><code>usePasteHandler</code></td><td>检测 bracketed paste 序列</td><td>正确处理多行粘贴（不误触发 Enter）</td></tr>
+              <tr><td><code>renderedValue</code></td><td>预计算的 ANSI 字符串</td><td>高亮、Shimmer 效果与输入逻辑解耦</td></tr>
+              <tr><td><code>terminalFocus</code></td><td>外部注入的焦点状态</td><td>与 Ink 的全局 TTY 焦点状态同步</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — isCancelActive 键位让渡：键盘焦点的"礼让"机制</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：Dialog 和 TextInput 都想响应 Esc 键，但 Esc 在 Dialog 是"取消对话框"，在 TextInput 是"清空输入"，两者冲突。<code>isCancelActive</code> 就是 Dialog 的"礼让开关"——当你在对话框里打字时，Dialog 主动放弃 Esc，把控制权还给输入框。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：Dialog 和 TextInput 都抢 Esc，结果是用户按一下 Esc，既清空了输入，又关了对话框——不符合预期，难以调试。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 性能优化链路 -->
+      <section class="content-section" id="perf">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">性能考量：完整优化链路</h2>
+        </div>
+
+        <div class="reveal">
+          <div class="callout callout-info">
+            <div class="callout-title"><span>⚡</span> 六级性能优化链路</div>
+            <pre style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-lg); font-size: 13px; overflow-x: auto; line-height: 2; margin-top: var(--space-sm);">输入：React 状态变更（setState）
+      ↓
+① 节流：throttle(16ms) 合并高频变更
+      ↓
+② 增量布局：Yoga 只重算脏节点（markDirty 机制）
+      ↓
+③ 增量渲染：只渲染 damage region 内的节点
+      ↓
+④ 缓存复用：Output charCache 命中则跳过字符处理
+      ↓
+⑤ 双缓冲 diff：BigInt64Array 整格比较，跳过未变化行
+      ↓
+⑥ 补丁优化：optimizer.ts 合并相邻补丁，减少 write 调用
+      ↓
+输出：最小化的 ANSI 补丁序列写入终端</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">🏗️ Harness Engineering 视角</h3>
+          <p class="content-p">React + Ink 的终端 UI 系统是 AI 能力的"驾驭层"——它不直接决定 AI 说什么，但完全控制用户怎么看、怎么交互。</p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--accent-blue); margin-bottom: var(--space-sm);">⚙️ 约束</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• <strong>渲染节流</strong>：把 AI 的输出频率强制降到人眼可接受的帧率</li>
+                <li>• <strong>Alt Screen 高度上限</strong>：AI 输出内容不会超出终端视口</li>
+                <li>• <strong>虚拟滚动上限</strong>：无论输出多少，UI 响应始终稳定</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--accent-green); margin-bottom: var(--space-sm);">🚀 增强</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• <strong>双缓冲 diff</strong>：精确的补丁序列，流式输出体验近似原生终端</li>
+                <li>• <strong>搜索高亮叠加</strong>：非侵入式 UI 增强，不影响 AI 内容本身</li>
+                <li>• <strong>Bracketed Paste</strong>：让用户可以把多行代码粘贴给 AI</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-orange); grid-column: span 2;">
+              <div style="font-weight: 700; color: var(--accent-orange); margin-bottom: var(--space-sm);">🎭 编排</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                <li>• <strong>键盘上下文系统</strong>：对话框打开时 Esc 归 Dialog，输入时 Esc 归 TextInput，系统自动协调</li>
+                <li>• <strong>光标声明机制</strong>：<code>useDeclaredCursor</code> 让多个组件都能声明"我需要光标"，由 Ink 统一决定</li>
+                <li>• <strong>Yoga 脏标记传播</strong>：React 状态变化 → <code>markDirty</code> → Yoga 增量布局 → 只重算受影响的节点</li>
+              </ul>
+            </div>
+          </div>
+
+          <h3 class="content-h3" style="margin-top: var(--space-2xl);">💡 对大模型应用的启发</h3>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🎛️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">渲染层要限制 AI 的输出频率</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">流式 LLM 输出每秒可能产生数十次 token，不加节流直接渲染会让 UI 失控。用 throttle 或 requestAnimationFrame 聚合 token 再渲染，而不是每个 token 触发一次 React setState。</p>
+              </div>
+            </div>
+          </div>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🪟</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">虚拟化是 AI 长对话的必选项</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">AI 对话天然会越来越长。不管你用什么 UI 框架，超过 50 条消息就应该考虑虚拟滚动，否则性能会线性下降。</p>
+              </div>
+            </div>
+          </div>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⌨️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">键盘焦点管理要设计成"声明式 + 仲裁器"</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">多 AI 工具并发工作时，每个工具都想要用户注意力。用集中式键盘上下文管理（像 Ink 的 <code>context</code> 系统），而不是每个组件自己监听 keydown，能避免大量冲突和竞态条件。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §6 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 06</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：Ink 使用 <code>Object.is</code> 比较整个 Frame 对象来决定是否跳过渲染。如果 Frame 很大，这个比较本身会不会成为瓶颈？Ink 是如何处理的？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>Object.is</code> 比较的是引用而非内容，对大对象来说是 O(1) 操作。真正的"内容比较"发生在 <code>writeDiffToTerminal</code> 阶段，这里用 <code>BigInt64Array</code> 逐格比较前后帧的单元格（每格 64 位一次比较）。<code>damage</code> 区域进一步缩小了需要比较的范围：只有被标记为"可能变化"的矩形区域才做精确比较，未变化的区域直接从前帧 blit 复用，完全跳过比较。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：Yoga 的 <code>calculateLayout</code> 是否每次都重新计算所有节点？还是有增量计算机制？如果有，<code>markDirty</code> 的作用是什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Yoga 有增量计算机制。每个 Yoga 节点都有"脏标记"，只有被标记为脏的节点及其祖先节点才会重新计算布局，未被标记的节点直接使用上次缓存的布局结果。<code>markDirty</code> 就是这个标记入口——当 React 更新了某个组件的属性，reconciler 调用 <code>markDirty</code> 告诉 Yoga 这个节点需要重算。100 个节点的树里，只有 2-3 个节点变化时，Yoga 只需重算那 2-3 个节点及其父链。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：React 18 的 Concurrent Mode 允许中断和重启渲染，但终端输出是顺序的。Ink 如何保证在 Concurrent Mode 下的输出一致性？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Ink 的关键一点是：React 的并发中断只发生在"协调阶段"，而真正写入终端发生在"提交阶段"（commit phase）。提交阶段在 React 中是同步且不可中断的——一旦开始提交，就会一次性完成所有 DOM 操作，不会中途被打断。Ink 的 <code>resetAfterCommit</code> 钩子在提交完成后才触发渲染，此时 React 树已经处于一致状态。所以并发模式的中断对终端输出没有影响。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：对比 Ink 的自定义 Reconciler 方案与"直接在 Node.js 中用 blessed/neo-blessed 等库"的方案，各有什么优缺点？为什么 Claude Code 选择了 Ink 方案？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<strong>blessed 方案</strong>：命令式 API（<code>box.setContent()</code>），直接控制终端，性能可以更极致，但状态管理全靠手写，复杂 UI 很快变成意大利面条代码；组件复用困难，没有生态。<strong>Ink 方案</strong>：声明式 React 组件，状态驱动，可以用 hooks/context 等全套 React 生态，组件可测试可复用。Claude Code 选择 Ink 是因为它的 UI 复杂度远超普通 CLI——虚拟滚动、搜索高亮、多面板布局、键盘焦点协调，这些用命令式实现会极其难以维护。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 深入阅读</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>src/ink/styles.ts</strong> — 理解 React 样式属性如何映射到 Yoga 的 C API（<code>setWidth</code>、<code>setFlexDirection</code> 等）</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 扩展实践</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <strong>src/ink/log-update.ts</strong>，理解如何通过移动光标、清除行的方式实现行级差异输出</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 架构探索</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <strong>src/ink/components/ScrollBox.tsx</strong>，理解终端滚动的完整实现（软件滚动 vs 硬件滚动 DECSTBM）</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔦</span> 搜索高亮</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <strong>src/ink/hooks/use-search-highlight.ts</strong>，理解两阶段扫描的工作原理</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <table class="arch-table" style="margin: 0;">
+              <thead><tr><th>层次</th><th>职责</th><th>关键技术</th></tr></thead>
+              <tbody>
+                <tr><td><span class="tag tag-blue">React 层</span></td><td>声明式 UI + 状态驱动</td><td>Concurrent Mode + useSyncExternalStore</td></tr>
+                <tr><td><span class="tag tag-purple">Reconciler 层</span></td><td>虚拟 DOM diff + 提交</td><td>自定义宿主配置（react-reconciler）</td></tr>
+                <tr><td><span class="tag tag-cyan">布局层</span></td><td>精确尺寸计算</td><td>Yoga（Flexbox in C++/WASM）</td></tr>
+                <tr><td><span class="tag tag-green">渲染层</span></td><td>DOM → 屏幕缓冲</td><td>双缓冲 + 损坏区域 + 增量渲染</td></tr>
+                <tr><td><span class="tag tag-orange">输出层</span></td><td>高效写入终端</td><td>行级差异 + 补丁优化 + ANSI 序列</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <nav class="lesson-nav-footer" aria-label="课程导航">
+          <a href="11.html" class="nav-prev">← 上一课：状态管理系统</a>
+          <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+          <a href="13.html" class="nav-next">下一课：主题系统与键盘快捷键 →</a>
+        </nav>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="13.html">下一课 →</a>
+      </nav>
+      <p class="footer-copy">第12课 · React + Ink 终端 UI 架构 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

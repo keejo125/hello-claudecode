@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第24课：CLI-first 与开放集成架构 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 的 CLI-first 设计哲学、三条集成接口（Bridge/Direct Connect/Remote）以及 Harness Engineering 开放架构思想。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    /* ── 课程页面专属布局 ─── */
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    /* ── 侧边栏目录 ─── */
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    /* ── 主内容区 ─── */
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    /* ── 章节容器 ─── */
+    .content-section {
+      margin-bottom: var(--space-3xl);
+    }
+
+    .content-section:last-child { margin-bottom: 0; }
+
+    /* ── 架构层级表格 ─── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── 对比表格 ─── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    /* ── 代码注释解析表 ─── */
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:nth-child(2) {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      min-width: 200px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    /* ── 学习目标清单 ─── */
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    /* ── 课程导航按钮 ─── */
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    /* ── 节内容标题 ─── */
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    /* ── 响应式 ─── */
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    /* ── 内联 code ─── */
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    /* ── 进度条颜色 ─── */
+    #progress-bar { background: var(--gradient-accent); }
+
+    /* ── 设计点评 blockquote ─── */
+    blockquote.design-review {
+      border-left: 4px solid var(--accent-blue);
+      background: #eff6ff;
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: var(--space-lg) var(--space-xl);
+      margin: var(--space-lg) 0;
+    }
+
+    blockquote.design-review p {
+      color: var(--text-secondary);
+      font-size: var(--font-size-sm);
+      line-height: 1.8;
+      margin-bottom: var(--space-sm);
+    }
+
+    blockquote.design-review p:last-child { margin-bottom: 0; }
+
+    blockquote.design-review strong {
+      color: var(--accent-blue);
+    }
+
+    /* ── 思考题 details ─── */
+    details {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      margin: var(--space-md) 0;
+      overflow: hidden;
+    }
+
+    details summary {
+      padding: var(--space-md) var(--space-lg);
+      background: var(--bg-secondary);
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-heading);
+      font-size: var(--font-size-sm);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      user-select: none;
+    }
+
+    details summary::-webkit-details-marker { display: none; }
+
+    details summary::before {
+      content: '▶';
+      font-size: 10px;
+      color: var(--accent-blue);
+      transition: transform var(--transition-fast);
+    }
+
+    details[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    details > *:not(summary) {
+      padding: var(--space-lg);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.8;
+      background: var(--bg-primary);
+    }
+  </style>
+</head>
+<body>
+
+<!-- 顶部进度条 -->
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     导航栏
+═══════════════════════════════════════════════════════════ -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     课程 Hero 区域
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-header">
+  <div class="container">
+    <!-- 面包屑 -->
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">专题篇</span>
+      <span class="sep">/</span>
+      <span>第24课</span>
+    </nav>
+
+    <!-- 课程编号 + 标题 -->
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 24 · 专题篇</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      CLI-first 与<br/>
+      <span class="gradient-text">开放集成架构</span>
+    </h1>
+
+    <!-- 元数据 -->
+    <div class="lesson-meta">
+      <span class="tag tag-purple">专题篇</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐ 难度较高</span>
+      <span class="tag tag-green">Bridge · Direct Connect · Remote</span>
+    </div>
+
+    <!-- 学习目标 -->
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>解释 Claude Code 为什么选择 CLI-first 而不是"多端内置"的设计哲学</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>描述 <code>src/entrypoints/cli.tsx</code> 作为超级引导器的快速路径分发机制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>分析 <code>src/bridge/</code> 如何提供标准化协议让外部 IDE 扩展被动调用 Claude Code</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>说明 <code>src/server/</code> 的 Direct Connect 模式如何支持程序化/自动化调用场景</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>理解 <code>src/remote/</code> 的远程会话机制本质上仍是 CLI 进程的远程投影</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">06</span>
+        <span>从架构角度解读"CLI-first + 开放集成接口"的 Harness Engineering 思想</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     主体布局：侧边栏 + 内容
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <!-- ── 侧边栏目录 ────────────────────── -->
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-clifirst">1.1 CLI-first 是什么</a></div>
+        <div class="toc-item sub"><a href="#concept-interfaces">1.2 三条集成接口</a></div>
+        <div class="toc-item sub"><a href="#concept-protocol">1.3 统一消息协议</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 CLI 核心集成架构</a></div>
+        <div class="toc-item sub"><a href="#arch-cli">2.2 cli.tsx 分发逻辑</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-cli">3.1 cli.tsx 快速路径</a></div>
+        <div class="toc-item sub"><a href="#code-bridge-enabled">3.2 bridgeEnabled.ts 三层保护</a></div>
+        <div class="toc-item sub"><a href="#code-bridge-msg">3.3 bridgeMessaging.ts 纯函数层</a></div>
+        <div class="toc-item sub"><a href="#code-repl-bridge">3.4 replBridge.ts 依赖注入</a></div>
+        <div class="toc-item sub"><a href="#code-server">3.5 server/ Direct Connect</a></div>
+        <div class="toc-item sub"><a href="#code-remote">3.6 RemoteSessionManager 消息分流</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-cli">4.1 CLI-first 的 Harness 意义</a></div>
+        <div class="toc-item sub"><a href="#harness-arch">4.2 被集成架构的工程价值</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.3 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题</a></div>
+      </nav>
+    </aside>
+
+    <!-- ── 主内容区 ────────────────────────────────── -->
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- ══════════════════════════════════════
+           §1 核心概念
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <!-- 1.1 CLI-first -->
+        <div id="concept-clifirst" class="reveal">
+          <h3 class="content-h3">1.1 CLI-first 是什么意思</h3>
+          <p class="content-p">
+            Claude Code 的本质是一个<strong>命令行工具</strong>。你在终端输入 <code>claude</code>，它启动一个交互式 REPL；你写 <code>claude -p "帮我审查这段代码"</code>，它在非交互模式运行并输出结果；你加 <code>--output-format stream-json</code>，它变成一个可以被程序消费的 JSON 流。
+          </p>
+          <p class="content-p">
+            这三种用法，核心都是同一套代码：
+          </p>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>🏗️</span> 统一核心</div>
+            <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-sm);">
+              <li>• <code>src/main.tsx</code> — 主循环，React+Ink 渲染 UI</li>
+              <li>• <code>src/QueryEngine.ts</code> — 对话调度中枢</li>
+              <li>• <code>src/tools/</code> — ~40 个工具</li>
+              <li>• <code>src/commands/</code> — ~50 个用户命令</li>
+            </ul>
+          </div>
+          <p class="content-p">
+            <strong>所谓"多端"，从来不是 Claude Code 内置的四个独立实现。</strong> VS Code 插件、JetBrains 插件这些"多触点"，是<em>外部生态通过接口调用 Claude Code</em>，而不是 Claude Code 自己变成了 VS Code 扩展。
+          </p>
+        </div>
+
+        <!-- 1.2 三条集成接口 -->
+        <div id="concept-interfaces" class="reveal">
+          <h3 class="content-h3">1.2 三条集成接口</h3>
+          <p class="content-p">Claude Code 对外提供三条被集成的接口：</p>
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>接口</th>
+                <th>模块</th>
+                <th>用途</th>
+                <th>调用方</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tag tag-blue">Bridge 协议</span></td>
+                <td><code>src/bridge/</code></td>
+                <td>IDE 扩展双向通信</td>
+                <td>VS Code / JetBrains 插件</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-green">Direct Connect</span></td>
+                <td><code>src/server/</code></td>
+                <td>本地 HTTP + WebSocket 服务</td>
+                <td>自动化脚本、CI/CD 工具</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-purple">Remote/CCR</span></td>
+                <td><code>src/remote/</code></td>
+                <td>云端会话订阅</td>
+                <td>claude.ai 网页、远程客户端</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>⚠️</span> 关键方向</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              注意方向：这三条接口都是"Claude Code <strong>等待被调用</strong>"，而不是"Claude Code 主动提供三套 UI"。
+            </p>
+          </div>
+        </div>
+
+        <!-- 1.3 统一消息协议 -->
+        <div id="concept-protocol" class="reveal">
+          <h3 class="content-h3">1.3 统一消息协议</h3>
+          <p class="content-p">
+            无论哪条接口，消息都用同一套协议类型（定义于 <code>src/entrypoints/agentSdkTypes.ts</code> 和 <code>src/entrypoints/sdk/controlTypes.ts</code>）：
+          </p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px; font-size: var(--font-size-sm);"><code>SDKMessage</code></div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">AI 产出的消息（assistant / tool_result / system 等）</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px; font-size: var(--font-size-sm);"><code>SDKControlRequest</code></div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">外部向 Claude Code 发送的控制指令（权限响应、中断、切换模型等）</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px; font-size: var(--font-size-sm);"><code>SDKControlResponse</code></div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">Claude Code 向外部回报的控制结果</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px; font-size: var(--font-size-sm);"><code>StdinMessage / StdoutMessage</code></div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">结构化 IO 模式的输入输出包装</div>
+            </div>
+          </div>
+          <p class="content-p">
+            这套协议是所有外部集成的"通用语言"——不管你从哪条通道接入，说的都是同一种话。
+          </p>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §2 架构设计
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计</h2>
+        </div>
+
+        <!-- 2.1 以 CLI 为核心的集成架构 -->
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 以 CLI 为核心的集成架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "核心 CLI 引擎"
+        MAIN["main.tsx<br/>交互式 REPL"]
+        QE["QueryEngine<br/>对话调度中枢"]
+        TOOLS["工具系统 ~40个"]
+        PERM["权限系统"]
+        MAIN --> QE
+        QE --> TOOLS
+        QE --> PERM
+    end
+
+    subgraph "入口引导层"
+        CLI["entrypoints/cli.tsx<br/>超级引导器<br/>（快速路径分发）"]
+    end
+
+    subgraph "被集成接口层"
+        BRIDGE["bridge/<br/>Bridge 协议<br/>IDE 扩展接入"]
+        SERVER["server/<br/>Direct Connect<br/>程序化接入"]
+        REMOTE["remote/<br/>CCR 远程会话<br/>云端接入"]
+    end
+
+    subgraph "外部调用方（非 Claude Code 自身）"
+        VSCODE["VS Code 扩展"]
+        JBRAIN["JetBrains 插件"]
+        CI["CI/CD 脚本"]
+        WEB["claude.ai 网页"]
+    end
+
+    CLI -->|"普通 claude 命令"| MAIN
+    CLI -->|"remote-control 参数"| BRIDGE
+    CLI -->|"--server 参数"| SERVER
+
+    VSCODE -->|"调用 Bridge 协议"| BRIDGE
+    JBRAIN -->|"调用 Bridge 协议"| BRIDGE
+    CI -->|"HTTP POST /sessions"| SERVER
+    WEB -->|"WebSocket 订阅"| REMOTE
+
+    BRIDGE --> QE
+    SERVER --> QE
+    REMOTE --> QE
+            </div>
+          </div>
+          <div class="callout callout-info" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 关键视角</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              外部 IDE 插件是调用方，<code>src/bridge/</code> 是被调用的接口层，<code>QueryEngine</code> 才是始终不变的核心。这是"CLI 工具 + 开放接口"的架构，不是"多端一体"的架构。
+            </p>
+          </div>
+        </div>
+
+        <!-- 2.2 cli.tsx 分发逻辑 -->
+        <div id="arch-cli" class="reveal">
+          <h3 class="content-h3">2.2 cli.tsx：超级引导器的分发逻辑</h3>
+          <p class="content-p">
+            <code>src/entrypoints/cli.tsx</code> 是整个 Claude Code 最外层的入口。它做的事只有一件：<strong>判断用户想干什么，把控制权转给对应的处理器</strong>。
+          </p>
+          <div class="mermaid-container">
+            <div class="mermaid">
+flowchart TD
+    START["cli.tsx: async main()"] --> V{"--version / -v ?"}
+    V -->|"是"| VERSION["打印版本<br/>零模块加载直接退出"]
+    V -->|"否"| PROFILER["加载 startupProfiler"]
+
+    PROFILER --> BRIDGE_CHECK{"feature('BRIDGE_MODE')<br/>+ remote-control / rc / sync ?"}
+    BRIDGE_CHECK -->|"是"| AUTH["Auth 检查 → GB 门控<br/>→ 企业策略检查"]
+    AUTH --> BRIDGE["bridgeMain() 启动 Bridge 服务"]
+
+    BRIDGE_CHECK -->|"否"| DAEMON{"feature('DAEMON')<br/>+ daemon / daemon-worker ?"}
+    DAEMON -->|"是"| DAEMON_MAIN["daemonMain() / runDaemonWorker()"]
+
+    DAEMON -->|"否"| BG{"feature('BG_SESSIONS')<br/>+ ps/logs/attach/kill/--bg ?"}
+    BG -->|"是"| BG_HANDLER["bg 会话管理"]
+
+    BG -->|"否"| OTHERS["... 更多快速路径 ..."]
+    OTHERS -->|"全部不匹配"| FULL["完整 CLI: main.tsx"]
+            </div>
+          </div>
+          <p class="content-p">
+            每个快速路径都用 <code>feature()</code> 做编译期门控：未启用的分支在生产包里<strong>根本不存在</strong>（死代码消除），已启用但参数不匹配的分支在运行时零成本跳过。
+          </p>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §3 关键源码深度走查
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+          <p class="content-p">六段核心代码，逐行拆解 CLI-first 架构的实现精髓。</p>
+        </div>
+
+        <!-- 3.1 cli.tsx -->
+        <div id="code-cli" class="reveal">
+          <h3 class="content-h3">3.1 cli.tsx：--version 快速路径与 Bridge 入口</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/entrypoints/cli.tsx</code> 第 28-161 行
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">⚡ 零模块加载</span>
+            <span class="pattern-badge">🔀 快速路径分发</span>
+            <span class="pattern-badge">🔒 三重验证链</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/entrypoints/cli.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">/**
+ * Bootstrap entrypoint - checks for special flags before loading the full CLI.
+ * All imports are dynamic to minimize module evaluation for fast paths.
+ * Fast-path for --version has zero imports beyond this file.
+ */
+async function main(): Promise&lt;void&gt; {
+  const args = process.argv.slice(2)
+
+  // ① 零模块加载的快速路径：--version
+  if (args.length === 1 &amp;&amp; (args[0] === '--version' || args[0] === '-v' || args[0] === '-V')) {
+    // MACRO.VERSION 在构建时内联
+    console.log(`${MACRO.VERSION} (Claude Code)`)
+    return
+  }
+
+  // ② 其他路径才加载 startupProfiler（动态 import，避免静态拖包）
+  const { profileCheckpoint } = await import('../utils/startupProfiler.js')
+  profileCheckpoint('cli_entry')
+
+  // ③ Bridge 快速路径：接受 remote-control / rc / remote / sync / bridge 等别名
+  if (feature('BRIDGE_MODE') &amp;&amp; (
+    args[0] === 'remote-control' || args[0] === 'rc' ||
+    args[0] === 'remote' || args[0] === 'sync' || args[0] === 'bridge'
+  )) {
+    profileCheckpoint('cli_bridge_path')
+    const { enableConfigs } = await import('../utils/config.js')
+    enableConfigs()
+    const { getBridgeDisabledReason, checkBridgeMinVersion } = await import('../bridge/bridgeEnabled.js')
+
+    // ④ Auth 检查（必须先于 GrowthBook，否则 GB 无用户上下文）
+    const { getClaudeAIOAuthTokens } = await import('../utils/auth.js')
+    if (!getClaudeAIOAuthTokens()?.accessToken) {
+      exitWithError(BRIDGE_LOGIN_ERROR)
+    }
+
+    // ⑤ GrowthBook 门控 + 企业策略检查
+    const disabledReason = await getBridgeDisabledReason()
+    if (disabledReason) exitWithError(`Error: ${disabledReason}`)
+    const versionError = checkBridgeMinVersion()
+    if (versionError) exitWithError(versionError)
+
+    await waitForPolicyLimitsToLoad()
+    if (!isPolicyAllowed('allow_remote_control')) {
+      exitWithError("Error: Remote Control is disabled by your organization's policy.")
+    }
+
+    // ⑥ 三重验证通过后，才真正启动 Bridge 服务
+    await bridgeMain(args.slice(1))
+    return
+  }
+  // ... 更多快速路径 ...
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md);"><strong>逐步解析：</strong></p>
+          <table class="code-anno-table">
+            <thead>
+              <tr><th>标记</th><th>代码/概念</th><th>设计意图</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>①</td><td>--version 快速路径</td><td><code>cli.tsx</code> 本身没有静态 import，所以 <code>--version</code> 路径在打印版本前不需要评估任何其他模块——零模块加载不是魔法，而是"动态导入 + 没有静态依赖"的结果</td></tr>
+              <tr><td>②</td><td>动态 import()</td><td>替代静态导入，确保每条路径只加载自己真正需要的模块</td></tr>
+              <tr><td>③④⑤⑥</td><td>Bridge 三重验证链</td><td>OAuth 登录状态 → GrowthBook 功能门控 → 企业管理策略。必须按顺序检查，因为没有 OAuth token GrowthBook 连用户上下文都没有</td></tr>
+            </tbody>
+          </table>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 超级引导器的最小化加载</strong></p>
+            <p><strong>好在哪里</strong>：<code>cli.tsx</code> 本身几乎不做任何业务，它的全部工作是"判断→转发"。每条路径用动态 <code>import()</code> 按需加载，确保 <code>--version</code> 不会拖着整个 React 树和工具注册表一起加载。对 CI 来说，<code>claude --version</code> 多等 300ms，一天跑几百次流水线，就是纯损耗。</p>
+            <p><strong>如果不这样做</strong>：如果 <code>cli.tsx</code> 像 <code>main.tsx</code> 那样静态导入所有东西，<code>claude --version</code> 就要等整个初始化链跑完才能响应。就像你去便利店只买一瓶水，结账台有两个通道——快速通道不扫码直接付款，普通通道要过一遍全套流程。用对通道，就是快一步。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.2 bridgeEnabled.ts -->
+        <div id="code-bridge-enabled" class="reveal">
+          <h3 class="content-h3">3.2 bridgeEnabled.ts：Bridge 的三层入口保护</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/bridge/bridgeEnabled.ts</code> 第 28-87 行
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🛡️ 编译期门控</span>
+            <span class="pattern-badge">📋 诊断性错误消息</span>
+            <span class="pattern-badge">🔐 OAuth 强绑定</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/bridge/bridgeEnabled.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// ① 编译期 feature() 保证：外部包里 GrowthBook 字符串字面量不出现
+export function isBridgeEnabled(): boolean {
+  return feature('BRIDGE_MODE')
+    ? isClaudeAISubscriber() &amp;&amp;
+        getFeatureValue_CACHED_MAY_BE_STALE('tengu_ccr_bridge', false)
+    : false
+}
+
+export async function getBridgeDisabledReason(): Promise&lt;string | null&gt; {
+  if (feature('BRIDGE_MODE')) {
+    if (!isClaudeAISubscriber()) {
+      // ② 没有 claude.ai 订阅，Bedrock/Vertex/API Key 用户都排除在外
+      return 'Remote Control requires a claude.ai subscription. Run `claude auth login` ...'
+    }
+    if (!hasProfileScope()) {
+      // ③ setup-token 或 CLAUDE_CODE_OAUTH_TOKEN 缺少 profile scope，无法获取 organizationUUID
+      return 'Remote Control requires a full-scope login token. ...'
+    }
+    if (!getOauthAccountInfo()?.organizationUuid) {
+      // ④ organizationUUID 为空，GrowthBook 门控无法正确判断
+      return 'Unable to determine your organization ...'
+    }
+    if (!(await checkGate_CACHED_OR_BLOCKING('tengu_ccr_bridge'))) {
+      // ⑤ GrowthBook 滚动发布门控未开放
+      return 'Remote Control is not yet enabled for your account.'
+    }
+    return null  // ⑥ 全部通过，返回 null 表示可用
+  }
+  return 'Remote Control is not available in this build.'
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md);"><strong>逐步解析：</strong></p>
+          <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; margin-bottom: var(--space-lg);">
+            <li>① <code>feature('BRIDGE_MODE')</code> 是编译期门控。外部发布版里，<code>if</code> 分支的代码完全消失，GrowthBook 的功能名字符串也不会出现在包里，防止被逆向分析内部功能标志。</li>
+            <li>②③ Bridge 必须使用 claude.ai OAuth token，Bedrock/Vertex/API Key 模式的用户完全不支持。</li>
+            <li>④ <code>organizationUuid</code> 缺失时，GrowthBook 的滚动发布门控会误返回 false，用户看到"未开启"而不知道重新登录就能解决（记录于 CC-1165）。</li>
+            <li>⑤⑥ GrowthBook 按组织维度做滚动发布，全部通过才返回 <code>null</code>（表示可用）。</li>
+          </ul>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 诊断性错误消息而不是裸 bool</strong></p>
+            <p><strong>好在哪里</strong>：<code>getBridgeDisabledReason()</code> 返回的不是 <code>true/false</code>，而是<strong>人类可读的具体原因</strong>（缺订阅、token scope 不够、组织 UUID 为空、门控未开放……）。每种情况给出不同的用户提示，用户知道下一步该做什么。</p>
+            <p><strong>如果不这样做</strong>：用户启动 Bridge 失败，看到的是"Remote Control not enabled"，但不知道是因为没订阅、还是 token 过期、还是企业策略禁用、还是功能灰度没轮到自己。就像医院化验单，不能只写"身体不好"——你要告诉患者是哪个指标异常，才能有针对性地处理。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.3 bridgeMessaging.ts -->
+        <div id="code-bridge-msg" class="reveal">
+          <h3 class="content-h3">3.3 bridgeMessaging.ts：纯函数消息处理层</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/bridge/bridgeMessaging.ts</code> 第 1-88 行
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🧪 纯函数设计</span>
+            <span class="pattern-badge">🔍 类型守卫</span>
+            <span class="pattern-badge">♻️ 多路复用</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/bridge/bridgeMessaging.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// ① 类型守卫：判断是否为 SDKMessage（宽松——只验证 type 字段是字符串）
+export function isSDKMessage(value: unknown): value is SDKMessage {
+  return (
+    value !== null &amp;&amp;
+    typeof value === 'object' &amp;&amp;
+    'type' in value &amp;&amp;
+    typeof value.type === 'string'
+  )
+}
+
+// ② 类型守卫：精确匹配 control_request（必须有 request_id 和 request 字段）
+export function isSDKControlRequest(value: unknown): value is SDKControlRequest {
+  return (
+    value !== null &amp;&amp;
+    typeof value === 'object' &amp;&amp;
+    'type' in value &amp;&amp;
+    value.type === 'control_request' &amp;&amp;
+    'request_id' in value &amp;&amp;
+    'request' in value
+  )
+}
+
+// ③ 虚拟消息（REPL 内部调用）是显示层的，Bridge 只关心顶层的 tool_use/result
+export function isEligibleBridgeMessage(m: Message): boolean {
+  if ((m.type === 'user' || m.type === 'assistant') &amp;&amp; m.isVirtual) {
+    return false
+  }
+  return (
+    m.type === 'user' ||
+    m.type === 'assistant' ||
+    (m.type === 'system' &amp;&amp; m.subtype === 'local_command')
+  )
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md;"><strong>逐步解析：</strong></p>
+          <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; margin-bottom: var(--space-lg);">
+            <li>① <code>isSDKMessage</code> 故意是宽松的——只要 <code>type</code> 是字符串就通过。这保证了服务端新增消息类型时，客户端不会静默丢弃。</li>
+            <li>② <code>isSDKControlRequest</code> 则需要精确匹配三个字段，因为调用方需要准确区分控制消息和普通 AI 消息。</li>
+            <li>③ 虚拟消息（<code>isVirtual: true</code>）是 <code>AgentTool</code> 内部子对话产生的"工作记录"，只是本地 UI 渲染用的，IDE 端不需要关心这些内部噪声。</li>
+          </ul>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>🧩</span> 纯函数的价值</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              整个文件没有任何模块级状态，所有协作者都作为参数传入。这使得 <code>replBridge.ts</code>（有环境变量的完整版本）和 <code>envLessBridgeCore.ts</code>（daemon 场景的无环境版本）都能复用同一套消息处理逻辑。
+            </p>
+          </div>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 把"判断逻辑"提炼成纯函数</strong></p>
+            <p><strong>好在哪里</strong>：<code>isEligibleBridgeMessage</code> 这种判断如果写死在 <code>replBridge.ts</code> 里，后来写 <code>envLessBridgeCore.ts</code> 时就需要复制一份。两份代码各自演化，最终行为会不一致，这是分布式 bug 的温床。提炼成纯函数后，任何地方改了规则，所有使用方自动同步。</p>
+            <p><strong>如果不这样做</strong>：就像餐厅有两个厨房，但"这道菜的配方"只写在 A 厨房的墙上。B 厨房的师傅凭记忆做，做出来的味道迟早会偏——你甚至可能察觉不到哪里不对，直到有客人投诉两家店口味不一样。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.4 replBridge.ts -->
+        <div id="code-repl-bridge" class="reveal">
+          <h3 class="content-h3">3.4 replBridge.ts：BridgeCoreParams 的依赖注入设计</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/bridge/replBridge.ts</code> 第 83-160 行（精选）
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">💉 依赖注入</span>
+            <span class="pattern-badge">📦 Bundle 隔离</span>
+            <span class="pattern-badge">🔧 接口声明</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/bridge/replBridge.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export type BridgeState = 'ready' | 'connected' | 'reconnecting' | 'failed'
+
+/**
+ * Explicit-param input to initBridgeCore. Everything initReplBridge reads
+ * from bootstrap state (cwd, session ID, git, OAuth) becomes a field here.
+ * A daemon caller (Agent SDK) that never runs main.tsx fills these in itself.
+ */
+export type BridgeCoreParams = {
+  dir: string          // ① 工作目录
+  machineName: string  // ② 机器标识（会话卡片显示用）
+  branch: string       // ③ Git 分支
+  gitRepoUrl: string | null  // ④ 仓库 URL
+
+  getAccessToken: () =&gt; string | undefined  // ⑤ 动态令牌获取器（不是静态字符串）
+
+  /**
+   * ⑥ 注入而非导入：避免把 auth.ts → config.ts → commands.ts 整条链拖进 Agent SDK 包
+   */
+  createSession: (opts: {
+    environmentId: string
+    title: string
+    gitRepoUrl: string | null
+    branch: string
+    signal: AbortSignal
+  }) =&gt; Promise&lt;string | null&gt;
+
+  archiveSession: (sessionId: string) =&gt; Promise&lt;void&gt;  // ⑦ 会话存档（尽力而为）
+
+  // ⑧ 内部 Message 到 SDKMessage 的转换器（注入以避免 commands.ts 拖入 bundle）
+  toSDKMessages?: (messages: Message[]) =&gt; SDKMessage[]
+
+  onInboundMessage?: (msg: SDKMessage) =&gt; void    // ⑨ IDE 发来的入站消息
+  onPermissionResponse?: (response: SDKControlResponse) =&gt; void  // ⑩ 权限决策响应
+  onInterrupt?: () =&gt; void                         // ⑪ 用户中断信号
+  onSetPermissionMode?: (mode: PermissionMode) =&gt;  // ⑫ 权限模式切换（带错误反馈）
+    { ok: true } | { ok: false; error: string }
+  onStateChange?: (state: BridgeState, detail?: string) =&gt; void  // ⑬ 状态变化通知
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md);"><strong>核心要点：</strong></p>
+          <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; margin-bottom: var(--space-lg);">
+            <li>⑤ <code>getAccessToken</code> 是函数而不是字符串，因为 OAuth token 会过期需要动态刷新。</li>
+            <li>⑥⑧ <strong>依赖注入的核心原因</strong>：如果 <code>replBridge.ts</code> 直接 <code>import createSession</code>，就会把整条依赖链拉进来：<code>createSession.ts → auth.ts → config.ts → commands.ts → React 树</code>——Agent SDK 包会包含完整的命令注册树和 React 组件，体积爆炸。通过参数注入，调用方自己决定注入哪个版本的实现。</li>
+            <li>⑫ <code>onSetPermissionMode</code> 返回 <code>{ ok: true } | { ok: false; error: string }</code> 而不是直接抛出异常——权限模式切换有前置条件，结果通过 <code>ok/error</code> 结构化返回。</li>
+          </ul>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 依赖注入 vs. 直接导入的 bundle 隔离</strong></p>
+            <p><strong>好在哪里</strong>：把 <code>createSession</code> 作为参数传进来，而不是直接 import，代价是参数列表变长了，但解决了真实的"Agent SDK bundle 变肥"问题。JavaScript 的 <code>import</code> 是静态的，一旦 <code>replBridge.ts</code> 导入了 <code>createSession.ts</code>，整条传递依赖都被打包进去，即使在 daemon 场景下完全用不到。</p>
+            <p><strong>如果不这样做</strong>：Agent SDK 包会包含完整的命令注册树（50 个命令）和 React 组件树，轻量化的 daemon 模式就失去了轻量的意义。就像你委托快递公司帮你打印文件，你只需要告诉他们"打印"这个接口——你不需要把你家的整台打印机搬过去。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.5 server/ Direct Connect -->
+        <div id="code-server" class="reveal">
+          <h3 class="content-h3">3.5 server/：Direct Connect 的程序化接入</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/server/createDirectConnectSession.ts</code> 和 <code>src/server/types.ts</code>
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔌 HTTP + WebSocket</span>
+            <span class="pattern-badge">🔀 会话隔离子进程</span>
+            <span class="pattern-badge">✅ Zod 验证</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/server/types.ts + createDirectConnectSession.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// src/server/types.ts — 服务端配置结构
+export type ServerConfig = {
+  port: number
+  host: string
+  authToken: string
+  unix?: string              // ① Unix socket 支持（本机 IPC，零网络开销）
+  idleTimeoutMs?: number     // ② 空闲超时，0 = 永不过期（daemon 模式）
+  maxSessions?: number       // ③ 最大并发会话数
+  workspace?: string         // ④ 默认工作目录
+}
+
+export type SessionInfo = {
+  id: string
+  status: SessionState       // starting | running | detached | stopping | stopped
+  createdAt: number
+  workDir: string
+  process: ChildProcess | null  // ⑤ 每个会话是独立的子进程
+  sessionKey?: string
+}
+
+// src/server/createDirectConnectSession.ts — 创建会话
+export async function createDirectConnectSession({
+  serverUrl,
+  authToken,
+  cwd,
+  dangerouslySkipPermissions,
+}: {
+  serverUrl: string
+  authToken?: string
+  cwd: string
+  dangerouslySkipPermissions?: boolean
+}): Promise&lt;{ config: DirectConnectConfig; workDir?: string }&gt; {
+
+  // ⑥ POST /sessions 创建新会话，服务端返回 session_id 和 ws_url
+  const resp = await fetch(`${serverUrl}/sessions`, {
+    method: 'POST',
+    headers,
+    body: jsonStringify({
+      cwd,
+      ...(dangerouslySkipPermissions &amp;&amp; {
+        dangerously_skip_permissions: true,  // ⑦ 显式跳过权限检查（CI 自动化场景）
+      }),
+    }),
+  })
+
+  // ⑧ Zod 验证响应结构（session_id, ws_url, work_dir）
+  const result = connectResponseSchema().safeParse(await resp.json())
+  if (!result.success) {
+    throw new DirectConnectError(`Invalid session response: ${result.error.message}`)
+  }
+
+  return {
+    config: {
+      serverUrl,
+      sessionId: result.data.session_id,
+      wsUrl: result.data.ws_url,  // ⑨ 后续用 WebSocket 接收流式输出
+      authToken,
+    },
+    workDir: result.data.work_dir,
+  }
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md;"><strong>核心要点：</strong></p>
+          <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; margin-bottom: var(--space-lg);">
+            <li>⑤ <strong>每个会话是独立的子进程</strong>：隔离性好，一个会话崩溃不影响其他会话，代价是进程开销。</li>
+            <li>⑥⑦ 先 POST 创建会话，拿到 <code>session_id</code> 和 <code>ws_url</code>，再用 WebSocket 连接接收流式输出。<code>dangerouslySkipPermissions: true</code> 是为 CI/CD 场景设计的。</li>
+            <li>⑧ Zod 验证服务端响应结构，不信任裸 JSON——在 API 版本不匹配时能给出明确的错误信息。</li>
+          </ul>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — HTTP + WebSocket 的会话创建模式</strong></p>
+            <p><strong>好在哪里</strong>：用 HTTP POST 创建会话（有请求/响应语义，易于重试和错误处理），用 WebSocket 订阅输出（实时流式，适合长时间运行的 AI 会话）。两种协议各用在最合适的地方，不强求用一种协议做所有事。</p>
+            <p><strong>如果不这样做</strong>：如果会话创建也走 WebSocket，创建失败的重试就复杂了——WebSocket 连接本身的建立失败和会话创建失败是两回事，混在一起很难区分错误类型。就像你租房子，先签合同（HTTP，有明确的生效时间）、再搬进去住（WebSocket，长期连接）——这两个步骤用不同的机制处理，各自清晰。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.6 RemoteSessionManager -->
+        <div id="code-remote" class="reveal">
+          <h3 class="content-h3">3.6 remote/RemoteSessionManager：远程会话的消息分流</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/remote/RemoteSessionManager.ts</code> 第 87-200 行（精选）
+          </p>
+
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📡 消息分流</span>
+            <span class="pattern-badge">👁️ viewerOnly 旁观模式</span>
+            <span class="pattern-badge">🔄 权限请求 Map</span>
+          </div>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/remote/RemoteSessionManager.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export class RemoteSessionManager {
+  private websocket: SessionsWebSocket | null = null
+  // ① 挂起的权限请求：requestId → 请求详情（支持并发多个）
+  private pendingPermissionRequests: Map&lt;string, SDKControlPermissionRequest&gt; = new Map()
+
+  // ② 消息分流：SDKMessage vs. control_request vs. control_cancel_request
+  private handleMessage(message: SDKMessage | SDKControlRequest | ...): void {
+    if (message.type === 'control_request') {
+      this.handleControlRequest(message)  // ③ 权限请求
+      return
+    }
+    if (message.type === 'control_cancel_request') {
+      // ④ 服务端取消待处理的权限请求（超时或被中断）
+      const { request_id } = message
+      this.pendingPermissionRequests.delete(request_id)
+      this.callbacks.onPermissionCancelled?.(request_id, ...)
+      return
+    }
+    if (isSDKMessage(message)) {
+      this.callbacks.onMessage(message)  // ⑤ AI 正常输出转发给上层
+    }
+  }
+
+  // ⑥ 用户消息通过 HTTP POST 发送（有明确的成功/失败语义）
+  async sendMessage(content: RemoteMessageContent): Promise&lt;void&gt; {
+    await sendEventToRemoteSession(this.config.sessionId, {
+      type: 'human',
+      content,
+    })
+  }
+}
+
+export type RemoteSessionConfig = {
+  sessionId: string
+  getAccessToken: () =&gt; string
+  orgUuid: string
+  /**
+   * ⑦ 当 true 时，该客户端是纯观察者：
+   *   - Ctrl+C/Escape 不发 interrupt 给远程 agent
+   *   - 60s 重连超时被禁用
+   *   - 不更新会话标题
+   * 用于 `claude assistant` 命令（旁观模式）。
+   */
+  viewerOnly?: boolean
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-md;"><strong>核心要点：</strong></p>
+          <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; margin-bottom: var(--space-lg);">
+            <li>① <code>pendingPermissionRequests</code> 是一个 Map，支持多个权限请求并发挂起——AI 可能同时发出多个工具调用，不能用单个变量。</li>
+            <li>④ <code>control_cancel_request</code> 是服务端取消权限请求的机制，如果 AI 已经超时或被中断，客户端把对应的确认弹窗关掉，不留无效的交互状态。</li>
+            <li>⑥ 写路径（用户消息）走 HTTP POST，读路径（AI 输出）走 WebSocket 订阅。非对称设计——读写方向的需求不同。</li>
+            <li>⑦ <code>viewerOnly</code> 用一个 boolean 实现了"主控者"和"旁观者"两种行为，不需要子类化——这是 <code>claude assistant</code> 命令的底层支撑。</li>
+          </ul>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 用 viewerOnly 字段而非子类实现"旁观者"</strong></p>
+            <p><strong>好在哪里</strong>：<code>viewerOnly: true</code> 一个字段，控制了三件互相关联的行为（不发中断、不重连超时、不更新标题）。如果用子类，要 override 三个方法，以后新增一个"旁观者专属逻辑"就又要改子类。</p>
+            <p><strong>如果不这样做</strong>：同一套 <code>RemoteSessionManager</code> 类被分裂成两个类，两套代码各自维护，主控者的 bug fix 忘了同步到旁观者——这类 bug 非常难复现。就像家里两个孩子，你可以给一个贴"请勿打扰"标签，而不是给他换一个脑子——一个 bool 字段比重塑整个对象结构简单多了。</p>
+          </blockquote>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §4 Harness Engineering
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <!-- 4.1 CLI-first 的 Harness 意义 -->
+        <div id="harness-cli" class="reveal">
+          <h3 class="content-h3">4.1 CLI-first 是一种 Harness 选择</h3>
+          <p class="content-p">
+            从 Harness Engineering 的视角看，Claude Code 选择 CLI-first 不是偶然的，而是深思熟虑的工程决策。<strong>Harness 的本质是"驾驭层"</strong>——在强大但难以精确控制的 AI 模型之上，构建一套工程化的约束、赋能和编排层。CLI 是最纯粹的 Harness 形态：
+          </p>
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>Harness 维度</th>
+                <th>CLI-first 的体现</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>约束</strong></td>
+                <td>权限系统、<code>REMOTE_SAFE_COMMANDS</code> 白名单、Bridge 入口的三重验证链；任何外部调用方只能通过开放接口接入，核心逻辑不可绕过</td>
+              </tr>
+              <tr>
+                <td><strong>赋能</strong></td>
+                <td>~40 个工具、~50 个命令、QueryEngine 的 ReAct 循环；外部集成者通过调用这些能力，而非重新实现</td>
+              </tr>
+              <tr>
+                <td><strong>编排</strong></td>
+                <td><code>cli.tsx</code> 的快速路径分发、Bridge 的 <code>BridgeState</code> 状态机、<code>HybridTransport</code> 的串行写队列；保证行为有序、可预期</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 4.2 被集成架构的工程价值 -->
+        <div id="harness-arch" class="reveal">
+          <h3 class="content-h3">4.2 "被集成"架构的工程价值</h3>
+          <p class="content-p">Claude Code 选择"CLI-first + 开放集成接口"而不是"多端一体"，有几条深层工程理由：</p>
+
+          <div style="display: flex; flex-direction: column; gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>✅</span> 单一核心，多样接入</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">所有集成方共享同一套 QueryEngine + 工具系统 + 权限系统。一次 bug fix，所有接入方同时受益。如果为每个"端"单独实现一套 AI 逻辑，这些 bug 就要修 N 次。</p>
+            </div>
+            <div class="callout callout-info">
+              <div class="callout-title"><span>🛡️</span> 明确的信任边界</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Bridge 接口有 OAuth 验证 + GrowthBook 门控 + 企业策略三层保护；Direct Connect 有 <code>authToken</code> 认证；Remote 有 OAuth + orgUuid 验证。"CLI 作为核心，接口作为入口"的结构使得信任边界非常清晰。</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>💡</span> 最小化集成成本</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">IDE 插件开发者只需要实现 Bridge 协议的客户端（发送 <code>control_request</code>、接收 <code>SDKMessage</code>），不需要嵌入或重新实现 AI 引擎。Claude Code 的核心能力对所有集成方是透明的黑盒，接口稳定不变。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4.3 大模型应用启发 -->
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.3 对大模型应用的启发</h3>
+
+          <div class="callout callout-tip" style="margin-bottom: var(--space-md);">
+            <div class="callout-title"><span>🚀</span> 启发 1：先有 CLI，再有集成</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              构建大模型应用时，先把核心能力做成一个命令行工具或库，再在此基础上构建 UI、API 和插件，而不是一开始就试图同时构建"Web + App + CLI + 插件"四个端。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); font-style: italic;">
+              实践建议：用"核心 Harness"+ "接入适配器"的分层思路，让 AI 逻辑（对话管理、工具调用、权限控制）在一个地方，各种接入形式（API、WebSocket、CLI、嵌入式）在另一个地方。
+            </p>
+          </div>
+
+          <div class="callout callout-info" style="margin-bottom: var(--space-md);">
+            <div class="callout-title"><span>🔗</span> 启发 2：开放接口比内置多端更可维护</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              "被集成"的架构意味着你只需要维护一套接口规范，生态里的集成方自行实现客户端。VS Code 插件团队自己维护插件代码，Anthropic 维护 Claude Code 核心——职责分离，出问题边界清晰。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); font-style: italic;">
+              实践建议：为你的 AI 应用设计清晰的"集成接口"（如 WebSocket 协议、REST API），而不是把每个外部集成写进核心代码里。每多一个"内置集成"，就多一份维护负担。
+            </p>
+          </div>
+
+          <div class="callout callout-idea">
+            <div class="callout-title"><span>📦</span> 启发 3：消息协议的统一比传输协议的统一更重要</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              Bridge、Direct Connect、Remote 走的传输协议各不相同（WebSocket、HTTP POST、Unix socket），但消息格式（<code>SDKMessage</code>、<code>SDKControlRequest</code>）是统一的。统一协议层让新的集成方容易上手，也让测试和调试工具可以复用。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); font-style: italic;">
+              实践建议：定义清晰的消息类型（最好有 TypeScript 类型或 JSON Schema），让所有集成方说同一种语言，而不是每条通道各自发明格式。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §5 思考题
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题</h2>
+          <p class="content-p">结合本课内容，思考以下问题，点击展开参考答案。</p>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">题目 1</h3>
+          <p class="content-p"><code>cli.tsx</code> 的 <code>--version</code> 快速路径为什么可以做到"零模块加载"？如果改成 <code>main.tsx</code> 里判断，会有什么代价？</p>
+          <details>
+            <summary>💡 参考答案</summary>
+            <div>
+              <p><code>cli.tsx</code> 本身几乎没有静态 <code>import</code>（只有构建期宏 <code>MACRO.VERSION</code>），所有后续模块都用动态 <code>import()</code> 延迟加载。所以 <code>--version</code> 路径在 <code>console.log</code> 之前不需要评估任何其他模块——零模块加载不是魔法，而是"动态导入 + 没有静态依赖"的结果。</p>
+              <p style="margin-top: 8px;">如果改到 <code>main.tsx</code> 里判断：<code>main.tsx</code> 有大量静态导入（QueryEngine、工具注册表、React+Ink 组件树、服务层），光是模块评估就需要 100-200ms，哪怕 <code>--version</code> 一共也就打印一行文字，这 100-200ms 是纯损耗。CI 流水线里频繁执行 <code>claude --version</code> 做版本检测，日积月累的等待时间很可观。</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">题目 2</h3>
+          <p class="content-p"><code>BridgeCoreParams</code> 里 <code>createSession</code> 为什么用参数注入而不是直接 <code>import</code>？如果直接导入会出现什么问题？</p>
+          <details>
+            <summary>💡 参考答案</summary>
+            <div>
+              <p>直接 <code>import createSession</code> 会把整条传递依赖拉进 bundle：<code>createSession.ts → auth.ts → config.ts → commands.ts → React 树</code>。这意味着 Agent SDK 包（轻量化场景）会包含完整的命令注册树（~50 个命令）和 React 组件，体积膨胀几倍。</p>
+              <p style="margin-top: 8px;">参数注入让 <code>replBridge.ts</code> 只声明接口（<code>createSession</code> 的类型），实现由调用方决定：完整 REPL 场景注入真实的 <code>createSession</code>，daemon 场景注入一个轻量版本（可能通过 IPC 调用），测试场景注入一个 mock。这三种场景的 bundle 大小和依赖图各不相同，参数注入是唯一能统一抽象这三种场景的方式。</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">题目 3</h3>
+          <p class="content-p"><code>getBridgeDisabledReason()</code> 检查 <code>organizationUuid</code> 是否为空，然后才检查 GrowthBook 门控。这个顺序是否可以调换？为什么？</p>
+          <details>
+            <summary>💡 参考答案</summary>
+            <div>
+              <p>不能调换。GrowthBook 门控（<code>tengu_ccr_bridge</code>）是<strong>按 organizationUUID 维度</strong>做滚动发布的——如果 <code>organizationUuid</code> 为空，GrowthBook 没有定位维度，会返回默认值 <code>false</code>，用户看到"Remote Control 未启用"的错误，但真正的原因是 token 缺少 profile scope 导致 UUID 没拉到，重新登录就能解决。</p>
+              <p style="margin-top: 8px;">如果先检查 GrowthBook 再检查 UUID，用户会看到一个误导性的错误消息，以为是账号没有资格开通，去找客服投诉——实际上只需要重新登录刷新 token。代码注释里明确记录了这是一个 UX bug 的修复（CC-1165）。</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">题目 4</h3>
+          <p class="content-p"><code>RemoteSessionManager</code> 的 <code>viewerOnly</code> 字段控制了三个不同的行为（不发中断、不重连超时、不更新标题）。这三个行为为什么要绑定在同一个字段里，而不是分成三个独立的字段？</p>
+          <details>
+            <summary>💡 参考答案</summary>
+            <div>
+              <p>这三个行为在业务语义上是强耦合的——"旁观者"这个用户角色天然要求这三者同时成立：旁观者不应该打断别人的会话（不发中断）、旁观者断线了重连超时不是严重错误（不重连超时）、旁观者不应该覆盖主控者设置的标题（不更新标题）。这三者描述的是同一个"旁观者身份"，不是三个独立可组合的选项。</p>
+              <p style="margin-top: 8px;">如果分成三个字段，调用方需要同时设置三个才能正确启用旁观模式，漏掉任何一个都是半残状态（比如旁观者意外发了中断，把别人的会话打断了）。单一 <code>viewerOnly</code> 字段明确表达了业务语义，是"意图驱动"的接口设计，而不是"能力组合"的接口设计。</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">题目 5</h3>
+          <p class="content-p"><code>SessionsWebSocket</code> 对 4001（Session Not Found）做了最多 3 次重试，对 4003（Unauthorized）直接放弃，对其他断连做指数退避重连。这三种策略体现了什么工程原则？</p>
+          <details>
+            <summary>💡 参考答案</summary>
+            <div>
+              <p><strong>按错误根本原因分类，给出有意义的重试策略</strong>，而不是对所有断连一刀切。</p>
+              <ul style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+                <li><strong>4001（暂时性）</strong>：服务端在做 compaction，会话短暂不可达但很快恢复，值得重试几次（最多 3 次，给一个宽容窗口）。</li>
+                <li><strong>4003（永久性）</strong>：token 无效或无权限，这是客户端状态问题，重连再多次也解决不了——直接放弃，提示用户重新登录。</li>
+                <li><strong>其他断连（网络性）</strong>：可能是网络抖动、服务重启等，指数退避（500ms → 8s）+ 随机抖动避免"重试风暴"，是处理暂时性网络问题的标准模式。</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <!-- 本课小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">
+              📌 本课小结
+            </h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">
+              Claude Code 的 CLI-first + 开放集成架构是 Harness Engineering 的教科书级实现：
+            </p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>CLI-first</strong>：核心只有一份，多触点通过开放接口接入，而非内置多端</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>三重验证</strong>：Bridge 入口的 OAuth → GrowthBook → 企业策略，顺序不可调换</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>依赖注入</strong>：<code>BridgeCoreParams</code> 通过参数注入解耦，控制不同部署形态的 bundle 大小</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>协议统一</strong>：传输层各异（WebSocket/HTTP/Unix socket），消息格式始终一致</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           课程导航页脚
+      ══════════════════════════════════════ -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="23.html" class="nav-prev">
+          ← 上一课：第23课
+        </a>
+
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+        <a href="25.html" class="nav-next">
+          下一课：Harness Engineering 综合篇 →
+        </a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     页脚
+═══════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="25.html">下一课 →</a>
+      </nav>
+
+      <p class="footer-copy">
+        第24课 · CLI-first 与开放集成架构 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<!-- 公共 JS -->
+<script src="../js/main.js"></script>
+
+<!-- 目录高亮 scrollspy -->
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

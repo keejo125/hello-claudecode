@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第20课：复杂工程理解与资产提取 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 的三层代码理解工具链：Glob 定位、ripgrep 搜索、LSP 语义理解，以及被动诊断反馈机制。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    blockquote.design-review { border-left: 4px solid var(--accent-cyan); background: #f0fdfa; margin: var(--space-lg) 0; padding: var(--space-md) var(--space-lg); border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+    blockquote.design-review p { margin: 0 0 var(--space-sm); font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; }
+    blockquote.design-review p:last-child { margin-bottom: 0; }
+
+    details { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); margin-bottom: var(--space-lg); overflow: hidden; }
+    details summary { cursor: pointer; padding: var(--space-md) var(--space-lg); font-weight: 600; color: var(--accent-blue); background: #eff6ff; user-select: none; list-style: none; }
+    details summary::-webkit-details-marker { display: none; }
+    details summary::before { content: '▶ '; font-size: 12px; }
+    details[open] summary::before { content: '▼ '; }
+    details > *:not(summary) { padding: var(--space-md) var(--space-lg); font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; }
+
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    #progress-bar { background: var(--gradient-accent); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">专题篇 · 能力维度横切</span>
+      <span class="sep">/</span>
+      <span>第20课</span>
+    </nav>
+
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 20 · 专题篇</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      复杂工程理解<br/>
+      <span class="gradient-text">与资产提取</span>
+    </h1>
+
+    <div class="lesson-meta">
+      <span class="tag tag-purple">专题篇 · 能力维度横切</span>
+      <span class="tag tag-orange">⏱ 建议 75 分钟</span>
+      <span class="tag tag-red">⭐⭐⭐⭐ 难度较高</span>
+      <span class="tag tag-green">ripgrep · LSP · 被动诊断</span>
+    </div>
+
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>描述 Claude Code 的三层代码理解工具链：Glob 定位文件、Grep 搜索内容、LSP 获取语义</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>解释 ripgrep 的三种运行模式（system/builtin/embedded）及其安全考量</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>分析 LSP 服务器管理器的异步初始化模式与"代无效化"机制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>说明被动诊断反馈（<code>textDocument/publishDiagnostics</code>）如何让 Claude 实时感知编译错误</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>理解 LSP 服务器通过插件系统加载的完整链路，以及为什么 LSP 不支持用户直接配置</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-layers">1.1 三层代码理解</a></div>
+        <div class="toc-item sub"><a href="#concept-ripgrep">1.2 ripgrep 三种模式</a></div>
+        <div class="toc-item sub"><a href="#concept-lsp">1.3 LSP 的角色</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 代码理解工具链架构</a></div>
+        <div class="toc-item sub"><a href="#arch-passive">2.2 被动诊断设计</a></div>
+        <div class="toc-item sub"><a href="#arch-lsp-plugin">2.3 为何只能通过插件</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-rg-modes">3.1 ripgrep 优先级路由</a></div>
+        <div class="toc-item sub"><a href="#code-rg-retry">3.2 EAGAIN 重试与超时</a></div>
+        <div class="toc-item sub"><a href="#code-lsp-init">3.3 代无效化初始化</a></div>
+        <div class="toc-item sub"><a href="#code-lsp-instance">3.4 LSP 状态机与崩溃恢复</a></div>
+        <div class="toc-item sub"><a href="#code-passive">3.5 被动诊断注入</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 Harness 视角</a></div>
+        <div class="toc-item sub"><a href="#harness-patterns">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-layers" class="reveal">
+          <h3 class="content-h3">1.1 代码理解的三个层次</h3>
+          <p class="content-p">Claude Code 理解一个大型代码库要经过三个层次的工具：</p>
+
+          <table class="arch-table">
+            <thead>
+              <tr><th>层次</th><th>工具</th><th>解决什么问题</th><th>示例</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>文件定位</td>
+                <td><code>GlobTool</code></td>
+                <td>"找出所有 TypeScript 测试文件"</td>
+                <td><code>**/*.test.ts</code></td>
+              </tr>
+              <tr>
+                <td>内容搜索</td>
+                <td><code>GrepTool</code> + ripgrep</td>
+                <td>"找出所有调用 <code>createLSPClient</code> 的地方"</td>
+                <td>正则 + 路径过滤</td>
+              </tr>
+              <tr>
+                <td>语义理解</td>
+                <td><code>LSPTool</code> + LSP 服务器</td>
+                <td>"这个函数的定义在哪里？有哪些引用？"</td>
+                <td><code>textDocument/definition</code></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p class="content-p">三者形成递进关系：<strong>Glob 缩小范围，Grep 精确匹配，LSP 提供结构化语义</strong>。</p>
+        </div>
+
+        <div id="concept-ripgrep" class="reveal">
+          <h3 class="content-h3">1.2 ripgrep 的三种运行模式</h3>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">ripgrep 运行模式优先级</span>
+            </div>
+            <pre><code class="language-text">优先级：用户指定系统路径 > embedded（内嵌到 bun 二进制）> builtin（vendor 目录）
+
+系统模式（system）：用 'rg' 命令名，不是绝对路径——防止 PATH 劫持
+嵌入模式（embedded）：通过 argv0='rg' 让 bun 进程自身分发
+内建模式（builtin）：vendor/ripgrep/{arch}-{platform}/rg</code></pre>
+          </div>
+        </div>
+
+        <div id="concept-lsp" class="reveal">
+          <h3 class="content-h3">1.3 LSP 的角色：超越文本搜索</h3>
+          <p class="content-p">
+            grep/glob 是"文本级别"的理解——知道"这串字符在哪里"。LSP（Language Server Protocol）是"语义级别"的理解——知道"这个符号是什么类型、在哪里被定义、谁在引用它"。这种区别在重构和跨文件导航时尤为关键。
+          </p>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 代码理解工具链架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "Claude（模型决策）"
+        MODEL["模型推理层<br/>决定用什么工具、搜什么"]
+    end
+
+    subgraph "定位层（Where）"
+        GLOB["GlobTool<br/>按文件名模式找文件<br/>按修改时间排序返回"]
+    end
+
+    subgraph "内容层（What）"
+        GREP["GrepTool<br/>ripgrep 高效正则搜索<br/>支持三种输出模式"]
+        RG["ripgrep 引擎<br/>system/builtin/embedded<br/>EAGAIN 重试、超时保护"]
+    end
+
+    subgraph "语义层（Why/Where）"
+        LSP_TOOL["LSPTool<br/>go-to-def、find-refs<br/>hover、diagnostics"]
+        LSP_MGR["LSPServerManager<br/>按文件扩展名路由<br/>管理多个 LSP 实例"]
+        LSP_SRV["LSPServerInstance<br/>独立子进程<br/>状态机：stopped↔running↔error"]
+        PASSIVE["passiveFeedback<br/>textDocument/publishDiagnostics<br/>被动接收编译诊断"]
+        DIAG_REG["LSPDiagnosticRegistry<br/>缓存最近诊断<br/>注入对话上下文"]
+    end
+
+    MODEL --> GLOB
+    MODEL --> GREP
+    GREP --> RG
+    MODEL --> LSP_TOOL
+    LSP_TOOL --> LSP_MGR
+    LSP_MGR --> LSP_SRV
+    LSP_SRV -->|"JSON-RPC over stdio"| LSP_SRV
+    LSP_SRV -->|"主动推送诊断"| PASSIVE
+    PASSIVE --> DIAG_REG
+    DIAG_REG -->|"附件注入"| MODEL
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-passive" class="reveal">
+          <h3 class="content-h3">2.2 被动诊断：让 Claude 在不询问的情况下感知错误</h3>
+          <p class="content-p">
+            LSP 的一个独特能力是<strong>被动推送</strong>：当你的代码有编译错误，语言服务器会主动发送 <code>textDocument/publishDiagnostics</code> 通知，不需要 Claude 专门去问。Claude Code 监听这个通知，把诊断信息缓存起来，在下一轮对话时作为附件注入。这意味着 Claude 在你说"修一下这个 bug"之前，<strong>已经知道有 bug 在哪里了</strong>。
+          </p>
+        </div>
+
+        <div id="arch-lsp-plugin" class="reveal">
+          <h3 class="content-h3">2.3 为什么 LSP 只能通过插件配置</h3>
+          <p class="content-p">
+            通过 <code>src/services/lsp/config.ts</code> 可以看到，LSP 服务器配置<strong>只从插件加载</strong>，不支持用户直接在 <code>settings.json</code> 里配置。这是一个<strong>安全决策</strong>：LSP 服务器是以独立子进程运行的，并且需要权限发送/接收文件内容。插件系统有独立的安装和审核流程，比用户任意配置更安全。如果用户能直接配置 LSP 服务器命令，等于允许任意代码在后台以 Claude Code 的权限运行。
+          </p>
+        </div>
+      </section>
+
+      <!-- §3 关键源码深度走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 ripgrep 优先级路由 -->
+        <div id="code-rg-modes" class="reveal">
+          <h3 class="content-h3">3.1 ripgrep.ts：三种模式的优先级路由</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/ripgrep.ts</code> 第 31-65 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/ripgrep.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">type RipgrepConfig = {
+  mode: 'system' | 'builtin' | 'embedded'
+  command: string
+  args: string[]
+  argv0?: string   // 只有 embedded 模式才需要，通过 argv0 欺骗 bun 分发
+}
+
+const getRipgrepConfig = memoize((): RipgrepConfig =&gt; {
+  const userWantsSystemRipgrep = isEnvDefinedFalsy(
+    process.env.USE_BUILTIN_RIPGREP,  // ① USE_BUILTIN_RIPGREP=0 → 使用系统 rg
+  )
+
+  if (userWantsSystemRipgrep) {
+    const { cmd: systemPath } = findExecutable('rg', [])
+    if (systemPath !== 'rg') {
+      // ② 安全关键：使用命令名 'rg' 而不是绝对路径 systemPath
+      // 防止 ./rg.exe 这类 PATH 劫持攻击
+      return { mode: 'system', command: 'rg', args: [] }
+    }
+  }
+
+  // ③ embedded 模式：bun 打包产物内嵌了 ripgrep
+  if (isInBundledMode()) {
+    return {
+      mode: 'embedded',
+      command: process.execPath,  // bun 可执行文件自身
+      args: ['--no-config'],
+      argv0: 'rg',  // 让 bun 的内部分发器以 rg 模式运行
+    }
+  }
+
+  // ④ builtin：vendor 目录里打包的预编译 rg 二进制
+  const rgRoot = path.resolve(__dirname, 'vendor', 'ripgrep')
+  const command =
+    process.platform === 'win32'
+      ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
+      : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
+
+  return { mode: 'builtin', command, args: [] }
+})</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① <code>isEnvDefinedFalsy</code> 检测 <code>USE_BUILTIN_RIPGREP=0</code> 或 <code>false</code>，用来让用户强制使用系统安装的 rg（通常更新、支持更多特性）。<br/>
+            ② <strong>安全关键</strong>：返回字符串 <code>'rg'</code> 而不是 <code>systemPath</code>（如 <code>/usr/local/bin/rg</code>）。原因是 PATH 解析时 OS 会跳过当前目录，而绝对路径解析时攻击者可以在工作目录放一个同名二进制。<br/>
+            ③ embedded 模式是最巧妙的——bun 把 ripgrep 静态编译进了自身，通过 <code>argv0</code> 告诉 bun"我是 rg，用 rg 模式运行"，连子进程都不需要额外下载。<br/>
+            ④ 按 <code>${process.arch}-${process.platform}</code> 区分不同 CPU 架构和操作系统，支持 arm64-darwin、x64-linux 等多平台。
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — PATH 劫持防护</strong></p>
+            <p><strong>好在哪里</strong>：用命令名 <code>'rg'</code> 而非绝对路径，是一个反直觉但正确的安全决策。绝对路径看起来更"精确"，但在 Windows 上 <code>NoDefaultCurrentDirectoryInExePath</code> 保护只对命令名有效。攻击者在项目目录放一个 <code>rg.exe</code>，调用绝对路径就会绕过保护，调用命令名 <code>'rg'</code> 就不会。</p>
+            <p><strong>如果不这样做</strong>：Claude Code 在分析一个"恶意项目"（含伪装的 rg.exe）时，可能执行攻击者的任意代码，权限与 Claude Code 进程相同。这是一种经典的供应链攻击向量。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.2 EAGAIN 重试与超时 -->
+        <div id="code-rg-retry" class="reveal">
+          <h3 class="content-h3">3.2 ripgrep.ts：EAGAIN 重试与超时容错</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/ripgrep.ts</code> 第 380-455 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/ripgrep.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export async function ripGrep(
+  args: string[],
+  target: string,
+  abortSignal: AbortSignal,
+): Promise&lt;string[]&gt; {
+  await codesignRipgrepIfNecessary()  // ① macOS 代码签名懒检查
+
+  return new Promise((resolve, reject) =&gt; {
+    const handleResult = (error, stdout, stderr, isRetry): void =&gt; {
+      if (!error) {
+        // ② 成功：trim + 按行分割 + 过滤空行
+        resolve(stdout.trim().split('\n').map(l =&gt; l.replace(/\r$/, '')).filter(Boolean))
+        return
+      }
+      if (error.code === 1) {
+        resolve([])  // ③ exit code 1 = 无匹配，不是错误
+        return
+      }
+      // ④ 关键错误（ENOENT/EACCES/EPERM）直接 reject
+      const CRITICAL_ERROR_CODES = ['ENOENT', 'EACCES', 'EPERM']
+      if (CRITICAL_ERROR_CODES.includes(error.code)) {
+        reject(error)
+        return
+      }
+      // ⑤ EAGAIN = 资源不足（Docker/CI 环境），单线程重试
+      if (!isRetry &amp;&amp; isEagainError(stderr)) {
+        logEvent('tengu_ripgrep_eagain_retry', {})
+        ripGrepRaw(args, target, abortSignal,
+          (retryError, retryStdout, retryStderr) =&gt; {
+            handleResult(retryError, retryStdout, retryStderr, true)
+          },
+          true,  // 强制 -j 1 单线程模式（仅本次重试）
+        )
+        return
+      }
+      // ⑥ 超时有部分结果时，返回不完整列表（比空列表好）
+      const isTimeout = error.signal === 'SIGTERM' || error.signal === 'SIGKILL'
+      // ⑦ 超时且无结果：抛出专属错误，让 Claude 知道搜索未完成
+      if (isTimeout &amp;&amp; lines.length === 0) {
+        reject(new RipgrepTimeoutError(
+          `Ripgrep search timed out after ${getPlatform() === 'wsl' ? 60 : 20} seconds...`,
+          lines,
+        ))
+        return
+      }
+      resolve(lines)
+    }
+  })
+}</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① <code>codesignRipgrepIfNecessary()</code> 是 macOS 专属的懒加载签名检查——首次运行时检测 rg 二进制是否只有 linker-signed，如果是就重新签名。<br/>
+            ③ ripgrep exit code 1 表示"搜索成功但没有匹配"，是正常情况而非错误。初学者常会把 <code>code === 1</code> 当错误处理。<br/>
+            ⑤ EAGAIN 是 Linux 资源不足（<code>os error 11</code>），多发于 Docker 容器或 CI 环境，原因是 ripgrep 默认多线程，fork 时受限。解法是一次性的 <code>-j 1</code> 单线程重试，不会全局降级。<br/>
+            ⑦ 超时有部分结果 vs 无结果：有结果时返回部分结果（也许够用），无结果时抛出 <code>RipgrepTimeoutError</code>——让 Claude 知道"没找到不代表不存在，是搜索超时了"。
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 差异化超时处理</strong></p>
+            <p><strong>好在哪里</strong>：超时后"有结果返回部分结果，无结果抛出专属错误"这个设计很务实。部分结果总比什么都没有强——Claude 可能从 100 个匹配里找到答案，哪怕还有 50 个没搜完。但如果完全没有结果，Claude 必须知道"这不是因为真的没有"，否则会做出错误推断：比如"这个函数没有被引用，可以安全删除"——但其实是搜索没跑完。</p>
+            <p><strong>如果不这样做</strong>：超时时统一返回空数组，Claude 看到空结果会认为"无匹配"，可能做出"没有这个文件"、"没有这个函数的引用"等错误结论，导致删代码、改错地方。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.3 代无效化 -->
+        <div id="code-lsp-init" class="reveal">
+          <h3 class="content-h3">3.3 manager.ts：LSP 初始化的"代无效化"模式</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/lsp/manager.ts</code> 第 145-208 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/services/lsp/manager.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">let initializationGeneration = 0  // ① 代计数器：防止过期 Promise 修改状态
+
+export function initializeLspServerManager(): void {
+  if (isBareMode()) return  // ② --bare 模式不需要 LSP
+
+  // ③ 幂等性：已经初始化就直接返回
+  if (lspManagerInstance !== undefined &amp;&amp; initializationState !== 'failed') {
+    return
+  }
+
+  // ④ 失败重试：清除旧的失败状态
+  if (initializationState === 'failed') {
+    lspManagerInstance = undefined
+    initializationError = undefined
+  }
+
+  lspManagerInstance = createLSPServerManager()
+  initializationState = 'pending'
+
+  // ⑤ 关键：在 Promise 启动前递增代数，捕获当前代
+  const currentGeneration = ++initializationGeneration
+
+  initializationPromise = lspManagerInstance
+    .initialize()
+    .then(() =&gt; {
+      // ⑥ 只有当前代才能修改状态（防止竞态条件）
+      if (currentGeneration === initializationGeneration) {
+        initializationState = 'success'
+        if (lspManagerInstance) {
+          registerLSPNotificationHandlers(lspManagerInstance)
+        }
+      }
+    })
+    .catch((error: unknown) =&gt; {
+      if (currentGeneration === initializationGeneration) {  // ⑦ 同样的代检查
+        initializationState = 'failed'
+        initializationError = error as Error
+        lspManagerInstance = undefined
+      }
+    })
+}</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① <code>initializationGeneration</code> 是经典的"代无效化"（Generation Counter）模式——每次 reinitialize 时递增，让所有挂起的 Promise 在回调里检查"我还是当前代吗？"<br/>
+            ② <code>isBareMode()</code>：<code>--bare</code>（<code>-p</code> 参数）是无交互的脚本模式，不显示 UI，也不需要 LSP 语义服务。跳过节省启动时间。<br/>
+            ③ 幂等性：<code>initializeLspServerManager()</code> 可以被多次调用（插件刷新时会调用），不会重复初始化。<br/>
+            ⑤⑥⑦ 代无效化的完整模式：在 Promise 外捕获 <code>currentGeneration</code>，回调里检查 <code>currentGeneration === initializationGeneration</code>。如果 reinit 在中途发生，旧 Promise 的代数已经不匹配，修改状态的操作被跳过。
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 代无效化防竞态（Generation Counter）</strong></p>
+            <p><strong>好在哪里</strong>：LSP 初始化是异步的，可能需要几秒。如果在这段时间内用户触发了 <code>/reload-plugins</code>，会启动一次新的初始化。没有代计数器的话，旧初始化跑完后会把 <code>initializationState = 'success'</code> 覆盖掉新初始化的 <code>'pending'</code> 状态。代计数器就像给每个 Promise 贴了一张"哪届政府颁发的许可证"，只有当届的才能生效。</p>
+            <p><strong>如果不这样做</strong>：快速连续触发两次重新初始化，可能出现"先启动的 Promise 后完成"的时序问题，让系统认为 LSP 已成功初始化，但实际上用的是旧的（可能已过期的）配置。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.4 LSP 状态机 -->
+        <div id="code-lsp-instance" class="reveal">
+          <h3 class="content-h3">3.4 LSPServerInstance.ts：服务器状态机与崩溃恢复</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/lsp/LSPServerInstance.ts</code> 第 90-150 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/services/lsp/LSPServerInstance.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function createLSPServerInstance(
+  name: string,
+  config: ScopedLspServerConfig,
+): LSPServerInstance {
+  // ① 工厂函数模式，用闭包替代类
+  let state: LspServerState = 'stopped'  // stopped | starting | running | stopping | error
+  let crashRecoveryCount = 0
+
+  // ② 注入崩溃处理器：子进程异常退出时更新状态
+  const client = createLSPClient(name, error =&gt; {
+    state = 'error'
+    lastError = error
+    crashRecoveryCount++  // 不自动重启，而是等待下次请求时触发
+  })
+
+  async function start(): Promise&lt;void&gt; {
+    if (state === 'running' || state === 'starting') {
+      return  // ③ 幂等：已在运行则跳过
+    }
+
+    // ④ 崩溃熔断：超过最大重启次数后拒绝服务
+    const maxRestarts = config.maxRestarts ?? 3
+    if (state === 'error' &amp;&amp; crashRecoveryCount &gt; maxRestarts) {
+      throw new Error(
+        `LSP server '${name}' exceeded max crash recovery attempts (${maxRestarts})`
+      )
+    }
+
+    state = 'starting'
+    startTime = new Date()
+
+    // ⑤ 懒加载 vscode-jsonrpc (~129KB)
+    // 只有真正需要 LSP 时才加载，不影响启动速度
+  }
+}</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① 工厂函数 + 闭包替代类：<code>state</code>、<code>crashRecoveryCount</code> 等私有状态存在闭包里，不需要 <code>class</code> 关键字，也更难从外部意外修改。<br/>
+            ② 崩溃处理器是注入的回调，而不是轮询——子进程退出时立即回调，状态更新没有延迟。<br/>
+            ③ <code>start()</code> 的幂等性很重要——<code>ensureServerStarted()</code> 可能被多个并发工具调用触发，每次都检查一下，只有真正需要时才启动。<br/>
+            ④ 崩溃熔断：不是无限重试，而是有上限（默认 3 次）。超过后拒绝服务，让上层（LSPServerManager）知道这个服务器不可用。<br/>
+            ⑤ <code>vscode-jsonrpc</code> 是一个约 129KB 的模块，只有在实际创建 LSP 连接时才 require，不影响 Claude Code 的启动时间。
+          </p>
+        </div>
+
+        <!-- 3.5 被动诊断 -->
+        <div id="code-passive" class="reveal">
+          <h3 class="content-h3">3.5 passiveFeedback.ts：被动诊断注入对话上下文</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/lsp/passiveFeedback.ts</code> 第 125-180 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/services/lsp/passiveFeedback.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function registerLSPNotificationHandlers(
+  manager: LSPServerManager,
+): HandlerRegistrationResult {
+  const servers = manager.getAllServers()
+  const diagnosticFailures: Map&lt;string, { count: number; lastError: string }&gt; = new Map()
+
+  for (const [serverName, serverInstance] of servers.entries()) {
+    // ① 注册 textDocument/publishDiagnostics 被动通知处理器
+    serverInstance.onNotification(
+      'textDocument/publishDiagnostics',
+      (params: unknown) =&gt; {
+        // ② 验证 params 结构（防御性编程）
+        if (!params || typeof params !== 'object' ||
+            !('uri' in params) || !('diagnostics' in params)) {
+          return
+        }
+
+        try {
+          // ③ 转换 LSP 诊断格式 → Claude 附件格式
+          const diagnosticFiles = formatDiagnosticsForAttachment(
+            params as PublishDiagnosticsParams,
+          )
+          // ④ 注册到全局诊断注册表，后续 turn 时作为附件注入
+          registerPendingLSPDiagnostic(diagnosticFiles)
+        } catch (error) {
+          // ⑤ 跟踪连续失败次数，超过3次则警告用户
+          const failures = diagnosticFailures.get(serverName) ?? { count: 0, lastError: '' }
+          failures.count++
+          failures.lastError = String(error)
+          diagnosticFailures.set(serverName, failures)
+        }
+      },
+    )
+  }
+}</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① <code>onNotification</code> 是 JSON-RPC 的单向通知（服务器→客户端），不需要客户端请求触发，LSP 服务器在检测到文件变化时自动推送。<br/>
+            ② 防御性校验是必要的——LSP 服务器（特别是第三方的）可能发送格式不完全合规的 params，<code>'uri' in params</code> 这样的检查比直接类型断言更健壮。<br/>
+            ③ <code>formatDiagnosticsForAttachment</code> 做了几件事：把 <code>file://</code> URI 转换成文件路径，把 LSP 数字 severity（1-4）转换成 Claude 可读的字符串（Error/Warning/Info/Hint）。<br/>
+            ④ <code>registerPendingLSPDiagnostic</code> 把诊断结果放进一个全局注册表，下一次对话 turn 开始时，这些诊断会作为"附件"自动注入到上下文里，不需要用户手动请求。
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 被动注入（Passive Injection）</strong></p>
+            <p><strong>好在哪里</strong>：LSP 诊断是"主动推送"的——你修改了一个文件，编译器立刻告诉 Claude"这里有个类型错误"，下一句话开始之前 Claude 就已经知道了。就像一个坐在你旁边的同事，你在写代码，他一直盯着看，发现问题随时提醒你，而不是等你问他"这有没有问题"。</p>
+            <p><strong>如果不这样做</strong>：每次需要知道错误信息，都要调用一次 <code>BashTool</code> 跑编译命令，或者专门调用一次 LSP 请求。不仅慢，还打断了推理链——模型在思考重构方案的同时，还要插入一个"先看看有没有错误"的动作。</p>
+          </blockquote>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 Harness 视角</h3>
+          <p class="content-p">代码理解是 Harness 工程里最难做好的一环。Claude Code 的解法给了我们几个重要启示：</p>
+
+          <div class="callout callout-tip reveal">
+            <div class="callout-title"><span>🔍</span> 搜索工具的分层设计</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              不要试图用一个工具解决所有问题。Glob 做文件名模式匹配、Grep 做内容全文搜索、LSP 做语义查询——三个工具有清晰的职责边界，Claude 会根据任务选择最合适的。
+            </p>
+          </div>
+
+          <div class="callout callout-warning reveal">
+            <div class="callout-title"><span>⚠️</span> 容错是必须的</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              ripgrep 的 EAGAIN 重试、超时部分结果返回、LSP 崩溃熔断——代码库理解工具运行在复杂的真实环境里（Docker、CI、大单仓库），必须为各种边界情况设计容错路径，而不是只 happy path。
+            </p>
+          </div>
+        </div>
+
+        <div id="harness-patterns" class="reveal">
+          <h3 class="content-h3">4.2 大模型应用启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔄</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">Pattern 1：异步初始化 + 代无效化</h4>
+                <div class="code-block" style="margin: var(--space-sm) 0;">
+                  <pre><code class="language-typescript">// 你自己的 Agent 里也可以这样处理异步依赖的初始化
+let generation = 0
+
+async function reinitialize() {
+  const myGen = ++generation
+  const result = await someAsyncInit()
+  if (myGen !== generation) return  // 已被新一轮初始化取代，丢弃
+  // 更新全局状态...
+}</code></pre>
+                </div>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  这个模式在任何"可能被中途取消或重新触发的异步初始化"场景都适用：数据库连接池、配置重载、模型热更新。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📝</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">Pattern 2：工具自我描述的搜索边界</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  GrepTool 的 prompt 里写了 <code>"ALWAYS use Grep for search tasks. NEVER invoke grep or rg as a BashTool command."</code>——这是一种"元提示约束"，告诉模型工具使用的优先级和边界。如果你在设计多工具 Agent，工具的 description 不仅要说"能做什么"，还要说"什么时候用我而不是其他工具"。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">Pattern 3：被动诊断作为上下文注入</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  你的 AI Agent 也可以用类似的模式：设置一个"后台监听器"监听某个状态变化（测试失败、部署状态、监控告警），在每次模型轮次开始前检查有没有新的被动信号，如果有就自动注入为"附件"上下文，让模型在推理时自动感知。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题与进阶 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶</h2>
+        </div>
+
+        <div class="reveal">
+          <details>
+            <summary>💡 题目 1：<code>ripGrep()</code> 超时时对"有部分结果"和"无结果"的处理逻辑不同。你能想到一个场景，where 这个差异对于 Claude 的下游推断非常关键？</summary>
+            <p>
+              <strong>参考答案</strong>：最典型的场景是"查找函数是否被引用"。Claude 可能想在删除某个函数前确认它没有被调用。如果搜索超时且无结果，ripgrep 抛出 <code>RipgrepTimeoutError</code>，Claude 能读到"搜索未完成"的提示，不会贸然删除。如果超时但有部分结果（比如扫到了 50 个文件），Claude 可以从已有结果中判断"至少有 N 个引用"，做出保守决策。反之如果都返回空数组，Claude 会误认为"没有引用，可以删除"，导致破坏性错误。超时后的行为设计直接影响了 Agent 的安全边界。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 2：LSP 服务器通过插件加载，而不是让用户直接在 settings.json 里配置。这背后的安全考量是什么？如果允许用户自由配置，最坏情况是什么？</summary>
+            <p>
+              <strong>参考答案</strong>：最坏情况：用户在 settings.json 里配置一个伪装成语言服务器的恶意二进制（比如 <code>"command": "/tmp/evil-lsp"</code>），Claude Code 启动时会以自身权限运行这个二进制，赋予其读写文件系统、访问网络的能力。更隐蔽的变体是恶意项目（通过 project-level settings.json）注入恶意 LSP，任何打开该项目的用户都会受害。插件系统有独立的安装流程和来源验证（npm/marketplace），提供了一层最低限度的可信度检查。注意同样的安全原因，<code>autoMemoryDirectory</code> 也禁止通过 projectSettings 配置。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 3：<code>LSPServerInstance</code> 的崩溃处理器在服务器进程意外退出时将 state 设为 <code>'error'</code>，但不自动重启，而是等待下次请求时触发重启。这个"延迟重启"的设计有什么好处？</summary>
+            <p>
+              <strong>参考答案</strong>：延迟重启避免了"崩溃循环"（crash loop）：如果服务器每次启动都会立即崩溃（比如配置有误，或者项目文件有问题），自动重启只会导致无限循环，消耗 CPU 和内存。等到下次有真实请求时重启，给了用户修复问题的时间，也让日志里的错误和用户的操作有关联性（"我做了什么 → 触发了 LSP → 失败了"），更容易诊断。同时有崩溃次数上限（<code>maxRestarts=3</code>），超过后彻底放弃，不再消耗资源。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 4：Glob 工具的描述说"返回按修改时间排序的文件路径"。为什么按修改时间排序对于 AI 代码助手来说是一个好的默认排序？</summary>
+            <p>
+              <strong>参考答案</strong>：对于代码助手的典型任务（"帮我修改最近改动的文件"、"找到刚才新增的测试文件"），最近修改的文件往往最相关。按修改时间降序排列意味着 Claude 在列表顶部看到的，通常就是用户刚操作过的文件。在上下文有限（Token 限制）的情况下，如果文件列表被截断，被截断的是最旧的文件——通常影响最小。相比之母，按字母顺序排序则没有这种"最近优先"的语义优势。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 5：被动诊断（<code>textDocument/publishDiagnostics</code>）是 JSON-RPC 通知（Notification），不是请求（Request）。JSON-RPC 协议里通知和请求的核心区别是什么？这对 LSP 的被动推送机制有什么影响？</summary>
+            <p>
+              <strong>参考答案</strong>：JSON-RPC 请求（Request）有 <code>id</code> 字段，服务器必须返回对应的 Response（结果或错误）。通知（Notification）没有 <code>id</code>，发送方不期望任何返回——是彻底的 fire-and-forget。对于 LSP 被动推送来说，这意味着：语言服务器可以在任意时刻发送诊断通知，Claude Code 侧只需要注册处理函数（<code>onNotification</code>）等待即可；不需要轮询、不需要请求-响应往返、也不需要追踪 ID。这种模式的代价是没有确认机制——如果 Claude Code 的处理器出了异常，服务器不会知道通知是否被正确处理，因此 passiveFeedback.ts 需要在处理器内部做 try/catch 并追踪失败计数。
+            </p>
+          </details>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>三层工具链</strong>：Glob（文件定位）→ Grep（内容搜索）→ LSP（语义理解）职责清晰</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>安全防护</strong>：ripgrep 用命令名而非绝对路径，防止 PATH 劫持攻击</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>代无效化</strong>：异步初始化中防止旧 Promise 覆盖新状态的经典模式</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>被动诊断</strong>：LSP 主动推送让 Claude 在不询问情况下感知编译错误</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <nav class="lesson-nav-footer" aria-label="课程导航">
+          <a href="19.html" class="nav-prev">← 第19课：上下文管理与模型路由</a>
+          <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+          <a href="21.html" class="nav-next">下一课：自主记忆与个性化 →</a>
+        </nav>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="21.html">下一课 →</a>
+      </nav>
+      <p class="footer-copy">第20课 · 复杂工程理解与资产提取 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第22课：长程任务与多智能体协作 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 的任务类型体系、Coordinator 协调器模式、Agent Swarm 调度模型与任务状态机的设计。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    /* ── 课程页面专属布局 ─── */
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    /* ── 侧边栏目录 ─── */
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    /* ── 主内容区 ─── */
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    /* ── 章节容器 ─── */
+    .content-section {
+      margin-bottom: var(--space-3xl);
+    }
+
+    .content-section:last-child { margin-bottom: 0; }
+
+    /* ── 架构层级表格 ─── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── 对比表 ─── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    /* ── 代码注释解析表 ─── */
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    /* ── 学习目标清单 ─── */
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    /* ── 课程导航按钮 ─── */
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    /* ── 响应式 ─── */
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    /* ── 内联 code ─── */
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* ── 强调文字 ─── */
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    /* ── 节内容标题 ─── */
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    /* ── 进度条颜色 ─── */
+    #progress-bar { background: var(--gradient-accent); }
+
+    /* ── 设计点评 ─── */
+    blockquote.design-review {
+      background: #fffbeb;
+      border-left: 4px solid var(--accent-orange);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      padding: var(--space-lg);
+      margin: var(--space-lg) 0;
+    }
+
+    blockquote.design-review p {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-sm);
+    }
+
+    blockquote.design-review p:last-child { margin-bottom: 0; }
+
+    /* ── 思考题折叠 ─── */
+    details.quiz-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-md);
+      overflow: hidden;
+    }
+
+    details.quiz-item summary {
+      padding: var(--space-md) var(--space-lg);
+      font-weight: 600;
+      color: var(--text-heading);
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      line-height: 1.5;
+    }
+
+    details.quiz-item summary::-webkit-details-marker { display: none; }
+
+    details.quiz-item summary::before {
+      content: '▶';
+      font-size: 10px;
+      color: var(--accent-blue);
+      margin-top: 3px;
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+
+    details.quiz-item[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    details.quiz-item .quiz-answer {
+      padding: var(--space-lg);
+      padding-top: 0;
+      border-top: 1px solid var(--border-subtle);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    details.quiz-item[open] .quiz-answer {
+      padding-top: var(--space-md);
+    }
+  </style>
+</head>
+<body>
+
+<!-- 顶部进度条 -->
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     导航栏
+═══════════════════════════════════════════════════════════ -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson22">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson22" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     课程 Hero 区域
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-header">
+  <div class="container">
+    <!-- 面包屑 -->
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">专题篇 · 深度进阶</span>
+      <span class="sep">/</span>
+      <span>第22课</span>
+    </nav>
+
+    <!-- 课程编号 + 标题 -->
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🤖</span>
+      <span>LESSON 22 · 专题篇</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      长程任务与<br/>
+      <span class="gradient-text">多智能体协作</span>
+    </h1>
+
+    <!-- 元数据 -->
+    <div class="lesson-meta">
+      <span class="tag tag-purple">专题篇 · 深度进阶</span>
+      <span class="tag tag-orange">⏱ 建议 120 分钟</span>
+      <span class="tag tag-red">⭐⭐⭐⭐⭐ 难度极高</span>
+      <span class="tag tag-blue">任务系统 · Coordinator 模式 · Agent Swarm</span>
+    </div>
+
+    <!-- 学习目标 -->
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>解释 Claude Code 的任务分类体系（七种 <code>TaskType</code>）及其使用场景</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>分析 <code>Coordinator</code> 协调器的角色与工作流：Research → Synthesis → Implementation → Verification</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>理解 Agent Swarm 的调度模型：<code>AgentTool</code>（派发）+ <code>SendMessageTool</code>（续接）+ <code>TaskStopTool</code>（中止）</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>描述任务状态机（pending → running → completed/failed/killed）与终态守卫机制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>说明消息传递协议（<code>&lt;task-notification&gt;</code> XML）与后台通知机制</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     主体布局：侧边栏 + 内容
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <!-- ── 侧边栏目录 ────────────────────── -->
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-task-types">1.1 长程任务与 TaskType</a></div>
+        <div class="toc-item sub"><a href="#concept-state-machine">1.2 任务状态机</a></div>
+        <div class="toc-item sub"><a href="#concept-coordinator">1.3 Coordinator 模式</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 多智能体协作全景图</a></div>
+        <div class="toc-item sub"><a href="#arch-workflow">2.2 协调器工作流设计</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-task">3.1 Task.ts 任务类型系统</a></div>
+        <div class="toc-item sub"><a href="#code-tasks">3.2 tasks.ts 任务注册表</a></div>
+        <div class="toc-item sub"><a href="#code-coordinator">3.3 coordinatorMode.ts 系统提示</a></div>
+        <div class="toc-item sub"><a href="#code-team">3.4 TeamCreateTool.ts 团队管理</a></div>
+        <div class="toc-item sub"><a href="#code-agent">3.5 AgentTool.tsx 递归深度控制</a></div>
+        <div class="toc-item sub"><a href="#code-main-session">3.6 LocalMainSessionTask 主会话后台化</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 多智能体是"力量放大器"</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题</a></div>
+      </nav>
+    </aside>
+
+    <!-- ── 主内容区 ────────────────────────────────── -->
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- ══════════════════════════════════════
+           §1 核心概念
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <!-- 1.1 长程任务与 TaskType -->
+        <div id="concept-task-types" class="reveal">
+          <h3 class="content-h3">1.1 什么是"长程任务"</h3>
+          <p class="content-p">
+            传统 AI 对话是一问一答。"长程任务"是指一个需要<strong>跨越多个对话轮次、甚至并行运行多个 AI 实例</strong>才能完成的工作单元。
+          </p>
+          <p class="content-p">
+            Claude Code 用"任务（Task）"来封装这类工作。每个任务都有一个带前缀的随机 ID（如 <code>a3f8k2xy</code>），让你一眼看出这是哪种任务。
+          </p>
+
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>TaskType</th>
+                <th>前缀</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>local_bash</code></td>
+                <td><span class="tag tag-green">b</span></td>
+                <td>本地 Shell 命令（BashTool 触发）</td>
+              </tr>
+              <tr>
+                <td><code>local_agent</code></td>
+                <td><span class="tag tag-blue">a</span></td>
+                <td>本地 AI 子代理（AgentTool 触发）</td>
+              </tr>
+              <tr>
+                <td><code>remote_agent</code></td>
+                <td><span class="tag tag-purple">r</span></td>
+                <td>远程 CCR 环境里的子代理</td>
+              </tr>
+              <tr>
+                <td><code>in_process_teammate</code></td>
+                <td><span class="tag tag-cyan">t</span></td>
+                <td>进程内队友（与主会话共享内存）</td>
+              </tr>
+              <tr>
+                <td><code>local_workflow</code></td>
+                <td><span class="tag tag-orange">w</span></td>
+                <td>本地工作流脚本（实验性）</td>
+              </tr>
+              <tr>
+                <td><code>monitor_mcp</code></td>
+                <td><span class="tag tag-red">m</span></td>
+                <td>MCP 监控任务（实验性）</td>
+              </tr>
+              <tr>
+                <td><code>dream</code></td>
+                <td><span class="tag tag-blue">d</span></td>
+                <td>梦境任务（后台异步愿望）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 1.2 任务状态机 -->
+        <div id="concept-state-machine" class="reveal">
+          <h3 class="content-h3">1.2 任务状态机</h3>
+          <p class="content-p">
+            每个任务都有清晰的生命周期：从 <code>pending</code> 到 <code>running</code>，最终到达三种终态之一。
+          </p>
+
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph LR
+    P["pending"] --> R["running"]
+    R --> C["completed"]
+    R --> F["failed"]
+    R --> K["killed"]
+            </div>
+          </div>
+
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>🛡️</span> 终态守卫（isTerminalTaskStatus）</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              一旦任务到达 <code>completed</code>、<code>failed</code> 或 <code>killed</code> 三种终态之一，任何试图向它注入消息或修改状态的操作都会被拦截。这防止了"向已死的队友发消息"导致的资源泄漏。
+            </p>
+          </div>
+        </div>
+
+        <!-- 1.3 Coordinator 模式 -->
+        <div id="concept-coordinator" class="reveal">
+          <h3 class="content-h3">1.3 什么是 Coordinator 模式</h3>
+          <p class="content-p">
+            Coordinator 是 Claude Code 的"项目经理"角色。当你用 <code>CLAUDE_CODE_COORDINATOR_MODE=1</code> 启动时，这个实例不再亲自写代码，而是：
+          </p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🚀</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">派发任务</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">通过 <code>AgentTool</code> 给 Worker 子代理分配任务</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🧠</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">综合结果</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">自己理解 Worker 结果，不转包理解</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">↩️</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">续接 Worker</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">通过 <code>SendMessageTool</code> 让 Worker 继续干或修错</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🛑</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">叫停 Worker</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">通过 <code>TaskStopTool</code> 叫停走错方向的 Worker</div>
+            </div>
+          </div>
+
+          <p class="content-p">Worker 的结果以 <code>&lt;task-notification&gt;</code> XML 形式到达，格式如下：</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">XML · task-notification 协议</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-xml">&lt;task-notification&gt;
+  &lt;task-id&gt;agent-a1b&lt;/task-id&gt;
+  &lt;status&gt;completed&lt;/status&gt;
+  &lt;summary&gt;Worker 已完成&lt;/summary&gt;
+  &lt;result&gt;找到了 src/auth/validate.ts:42 的 null pointer...&lt;/result&gt;
+  &lt;usage&gt;
+    &lt;total_tokens&gt;4200&lt;/total_tokens&gt;
+    &lt;tool_uses&gt;7&lt;/tool_uses&gt;
+    &lt;duration_ms&gt;18500&lt;/duration_ms&gt;
+  &lt;/usage&gt;
+&lt;/task-notification&gt;</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §2 架构设计
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计</h2>
+        </div>
+
+        <!-- 2.1 多智能体协作全景图 -->
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 多智能体协作全景图</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "Coordinator 协调器层"
+        COORD["Coordinator<br/>coordinatorMode.ts<br/>项目经理"]
+    end
+    subgraph "任务派发层"
+        AT["AgentTool<br/>spawn worker"]
+        SM["SendMessageTool<br/>continue worker"]
+        TS["TaskStopTool<br/>kill worker"]
+    end
+    subgraph "Worker 执行层"
+        W1["Worker A<br/>LocalAgentTask<br/>研究任务"]
+        W2["Worker B<br/>LocalAgentTask<br/>实现任务"]
+        W3["Worker C<br/>LocalAgentTask<br/>验证任务"]
+    end
+    subgraph "任务注册层"
+        TR["TaskRegistry<br/>framework.ts<br/>registerTask / updateTaskState"]
+        TS2["TaskState<br/>AppState.tasks[]"]
+    end
+    subgraph "消息总线"
+        NQ["NotificationQueue<br/>messageQueueManager.ts"]
+        SE["SdkEventQueue<br/>sdkEventQueue.ts"]
+    end
+
+    COORD -->|"fork agent"| AT
+    AT --> W1
+    AT --> W2
+    COORD -->|"continue"| SM
+    SM --> W3
+    COORD -->|"stop"| TS
+    W1 -->|"task-notification"| NQ
+    W2 -->|"task-notification"| NQ
+    NQ --> COORD
+    W1 & W2 & W3 --> TR
+    TR --> TS2
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 协调器工作流设计 -->
+        <div id="arch-workflow" class="reveal">
+          <h3 class="content-h3">2.2 协调器工作流设计</h3>
+          <p class="content-p">
+            Coordinator 的四阶段工作流并不是随意定的——它对应了软件工程里<strong>不同阶段的信息依赖关系</strong>：
+          </p>
+
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>阶段</th>
+                <th>执行者</th>
+                <th>目的</th>
+                <th>并发策略</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Research（研究）</strong></td>
+                <td>Workers（并行）</td>
+                <td>探索代码库、找到问题</td>
+                <td>尽量并行，多角度覆盖</td>
+              </tr>
+              <tr>
+                <td><strong>Synthesis（综合）</strong></td>
+                <td><strong>Coordinator 自己</strong></td>
+                <td>理解结果，写出精确 spec</td>
+                <td>串行，必须自己读懂</td>
+              </tr>
+              <tr>
+                <td><strong>Implementation（实现）</strong></td>
+                <td>Workers</td>
+                <td>按 spec 改代码，提交</td>
+                <td>同一文件集串行，不同文件集可并行</td>
+              </tr>
+              <tr>
+                <td><strong>Verification（验证）</strong></td>
+                <td>Workers（独立）</td>
+                <td>证明代码工作，不是确认代码存在</td>
+                <td>独立 Worker，新鲜视角</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>⚠️</span> 关键设计约定</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              Coordinator 的系统提示里明确写道："<strong>Workers can't see your conversation. Every prompt must be self-contained.</strong>"
+              Worker 每次启动都是白板，看不见 Coordinator 和用户的对话历史。所以 Coordinator 写的每个 prompt 都必须<strong>自包含</strong>——文件路径、行号、错误信息、预期结果，一个都不能省。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §3 关键源码深度走查
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+          <p class="content-p">以下六段代码是理解整个多智能体任务系统的核心切入点，逐段拆解其设计意图。</p>
+        </div>
+
+        <!-- 3.1 Task.ts -->
+        <div id="code-task" class="reveal">
+          <h3 class="content-h3">3.1 Task.ts：任务类型系统与 ID 生成</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/Task.ts</code> 第 6-106 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/Task.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 七种任务类型，各有前缀字母用于 ID 区分
+export type TaskType =
+  | 'local_bash'          // b - BashTool 触发的后台 shell
+  | 'local_agent'         // a - AgentTool 触发的本地子代理
+  | 'remote_agent'        // r - 远程 CCR 环境代理
+  | 'in_process_teammate' // t - 进程内队友
+  | 'local_workflow'      // w - 工作流脚本（实验）
+  | 'monitor_mcp'         // m - MCP 监控（实验）
+  | 'dream'               // d - 异步后台愿望
+
+// 终态守卫：一旦进入终态，外部代码不允许修改状态
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'killed'
+}
+
+// Task ID 生成：前缀 + 8位随机字母数字
+// 36^8 ≈ 2.8万亿种组合，抵抗暴力枚举的符号链接攻击
+const TASK_ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz'
+export function generateTaskId(type: TaskType): string {
+  const prefix = getTaskIdPrefix(type)  // 'a'、'b'、'r' 等
+  const bytes = randomBytes(8)           // 加密安全随机
+  let id = prefix
+  for (let i = 0; i &lt; 8; i++) {
+    id += TASK_ID_ALPHABET[bytes[i]! % TASK_ID_ALPHABET.length]
+  }
+  return id
+}
+
+// 所有任务共享的基础字段
+export type TaskStateBase = {
+  id: string
+  type: TaskType
+  status: TaskStatus
+  description: string
+  toolUseId?: string    // 关联的 tool_use 消息 ID（用于结果回调）
+  startTime: number
+  endTime?: number
+  outputFile: string    // 任务输出落地到磁盘的路径
+  outputOffset: number  // 支持增量读取（流式输出）
+  notified: boolean     // 是否已向 Coordinator 发送完成通知
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            <strong>逐段解析</strong>：<code>isTerminalTaskStatus</code> 是整个任务生命周期管理的"防火墙"。调用它的地方有三类：防止向死掉的 Worker 注入消息（<code>enqueuePendingNotification</code>）、防止任务状态的错误回流（<code>updateTaskState</code>）、以及触发孤儿任务的清理（orphan-cleanup）。
+          </p>
+          <p class="content-p">
+            <code>generateTaskId</code> 用<strong>加密安全</strong>的 <code>randomBytes</code> 而非 <code>Math.random()</code>，这不是小题大做——任务 ID 会作为磁盘路径的一部分，如果用可预测的随机 ID，攻击者可以预先创建符号链接，把任务输出重定向到任意位置。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — ID 前缀的类型可读性</strong></p>
+            <p><strong>好在哪里</strong>：<code>a3f8k2xy</code> 一眼看出这是 local_agent 任务，<code>b5j9m1qw</code> 是 bash 任务。这种前缀设计让日志、调试、UI 展示都更直观——不用查表就能知道背景任务栏里那个 <code>r2d3...</code> 到底是本地代理还是远程代理。</p>
+            <p><strong>如果不这样做</strong>：所有任务都用纯随机 UUID，日志里全是 <code>38f2a901-7bcd-4e12-...</code>，排查问题时你需要额外查询来确认类型，增加认知负担。就像快递单号里的前缀——看到"SF"就知道是顺丰，不用查。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.2 tasks.ts -->
+        <div id="code-tasks" class="reveal">
+          <h3 class="content-h3">3.2 tasks.ts：任务注册表与特性标志门控</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/tasks.ts</code> 第 1-39 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/tasks.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">import { feature } from 'bun:bundle'
+
+// ① 静态注册：核心任务类型，始终存在
+import { LocalShellTask } from './tasks/LocalShellTask/LocalShellTask.js'
+import { LocalAgentTask } from './tasks/LocalAgentTask/LocalAgentTask.js'
+import { RemoteAgentTask } from './tasks/RemoteAgentTask/RemoteAgentTask.js'
+import { DreamTask } from './tasks/DreamTask/DreamTask.js'
+
+// ② 特性标志门控：实验性任务类型，按需打包
+const LocalWorkflowTask: Task | null = feature('WORKFLOW_SCRIPTS')
+  ? require('./tasks/LocalWorkflowTask/LocalWorkflowTask.js').LocalWorkflowTask
+  : null
+
+const MonitorMcpTask: Task | null = feature('MONITOR_TOOL')
+  ? require('./tasks/MonitorMcpTask/MonitorMcpTask.js').MonitorMcpTask
+  : null
+
+// ③ 任务注册表：按 type 查找对应任务处理器
+export function getAllTasks(): Task[] {
+  const tasks: Task[] = [
+    LocalShellTask, LocalAgentTask, RemoteAgentTask, DreamTask,
+  ]
+  if (LocalWorkflowTask) tasks.push(LocalWorkflowTask)
+  if (MonitorMcpTask) tasks.push(MonitorMcpTask)
+  return tasks
+}
+
+export function getTaskByType(type: TaskType): Task | undefined {
+  return getAllTasks().find(t => t.type === type)
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            <strong>设计分析</strong>：<code>tasks.ts</code> 和 <code>tools.ts</code> 用了完全相同的注册表模式——注释里甚至写着"Mirrors the pattern from tools.ts"。这是有意识的<strong>一致性设计</strong>：工具和任务都是可扩展的能力，用统一的模式管理，降低学习成本。
+          </p>
+          <p class="content-p">
+            <code>Task</code> 接口只有三个字段：<code>name</code>、<code>type</code>、<code>kill()</code>。注意 <code>spawn</code> 和 <code>render</code> 不在接口里——它们不再是多态调度的入口，而是由调用方直接调用具体类型。这是一次刻意的<strong>接口精简</strong>：减少接口面，降低实现者的负担。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — "kill 是唯一多态操作"的设计哲学</strong></p>
+            <p><strong>好在哪里</strong>：六种任务类型的 <code>kill</code> 实现各不相同（Shell 任务发 SIGKILL、Agent 任务取消 AbortController、Remote 任务调 API 停止），但它们都需要通过同一个接口被统一调用。把 <code>kill</code> 放进接口，只暴露"需要多态"的那个操作，其他操作各用各的实现——接口不膨胀，实现者不过度承诺。就像餐厅里"叫停上菜"是统一服务，但"怎么退菜"每家厨房的操作不一样。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.3 coordinatorMode.ts -->
+        <div id="code-coordinator" class="reveal">
+          <h3 class="content-h3">3.3 coordinatorMode.ts：协调器系统提示工程</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/coordinator/coordinatorMode.ts</code> 第 111-213 行（精选）
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/coordinator/coordinatorMode.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function getCoordinatorSystemPrompt(): string {
+  // ① 根据 SIMPLE 环境变量决定 Worker 有哪些工具
+  const workerCapabilities = isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
+    ? 'Workers have access to Bash, Read, and Edit tools, plus MCP tools.'
+    : 'Workers have access to standard tools, MCP tools, and project skills.'
+
+  return `You are Claude Code, an AI assistant that orchestrates software
+engineering tasks across multiple workers.
+
+## 4. Task Workflow
+### Concurrency
+**Parallelism is your superpower. Workers are async. Launch independent
+workers concurrently whenever possible.**
+
+- Read-only tasks (research) — run in parallel freely
+- Write-heavy tasks (implementation) — one at a time per set of files
+- Verification can sometimes run alongside implementation
+
+## 5. Writing Worker Prompts
+**Workers can't see your conversation.** Every prompt must be
+self-contained with everything the worker needs.
+
+// ② 反模式明确禁止
+// Anti-pattern:
+AgentTool({ prompt: "Based on your findings, fix the auth bug" })
+
+// Good — synthesized spec with concrete details:
+AgentTool({ prompt: "Fix null pointer in src/auth/validate.ts:42.
+  The user field on Session is undefined when sessions expire but token
+  remains cached. Add null check before user.id access." })`
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ① <code>workerCapabilities</code> 根据 <code>CLAUDE_CODE_SIMPLE</code> 决定 Worker 的工具能力。简化模式下只给 Bash/Read/Edit，正常模式下 Worker 还能用技能系统。这是一个<strong>能力分级</strong>设计：复杂任务用全功能 Worker，简单场景用轻量 Worker。
+          </p>
+          <p class="content-p">
+            ② 系统提示里的反模式禁令（"Never write 'based on your findings'"）是一种<strong>防退化机制</strong>——明确告诉 Coordinator 不要把理解工作转包给 Worker。在提示工程里，大模型读到具体的禁止语言比读到抽象的"应该"有效得多。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — 系统提示里的"反模式禁令"</strong></p>
+            <p><strong>好在哪里</strong>：与其说"要写好 spec"，不如直接说"永远不要写'based on your findings'"，更具体，更好执行。这就像驾校考试规则不是"你要好好开车"，而是"不系安全带扣12分"——具体的边界比抽象的原则更能约束行为。</p>
+            <p><strong>如果不这样做</strong>：Coordinator 可能说"根据你发现的问题，请修复 auth bug"——Worker 没有具体指引，就会重新探索代码库，做 Coordinator 已经做过的工作，浪费 token 和时间，而且可能得出不同结论。多智能体系统里，"理解必须在 Coordinator 侧"是最核心的约束之一。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.4 TeamCreateTool.ts -->
+        <div id="code-team" class="reveal">
+          <h3 class="content-h3">3.4 TeamCreateTool.ts：Agent Swarm 的团队管理</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/tools/TeamCreateTool/TeamCreateTool.ts</code> 第 74-237 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/tools/TeamCreateTool/TeamCreateTool.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export const TeamCreateTool = buildTool({
+  name: TEAM_CREATE_TOOL_NAME,
+  shouldDefer: true,  // ① 写操作，需要走 defer 审批流
+  isEnabled() {
+    return isAgentSwarmsEnabled()  // ② 由特性标志控制
+  },
+
+  async call(input, context) {
+    const { team_name, agent_type } = input
+    const appState = context.getAppState()
+
+    // ③ 一个 Leader 同时只能领导一个团队
+    if (appState.teamContext?.teamName) {
+      throw new Error(
+        `Already leading team "${appState.teamContext.teamName}". ` +
+        `Use TeamDelete to end the current team before creating a new one.`
+      )
+    }
+
+    // ④ 团队 ID 去重：如果团队名已存在，自动生成新名
+    const finalTeamName = generateUniqueTeamName(team_name)
+
+    // ⑤ 确定性 Lead Agent ID：格式为 "team-lead@teamName"
+    const leadAgentId = formatAgentId(TEAM_LEAD_NAME, finalTeamName)
+
+    // ⑥ 构建 TeamFile：落地到磁盘（跨进程通信的关键）
+    const teamFile: TeamFile = {
+      name: finalTeamName,
+      leadAgentId,
+      leadSessionId: getSessionId(),
+      members: [{ agentId: leadAgentId, name: TEAM_LEAD_NAME }],
+    }
+    await writeTeamFileAsync(finalTeamName, teamFile)
+    registerTeamForSessionCleanup(finalTeamName)  // ⑦ session 结束时清理
+
+    // ⑧ 重置任务列表：每个新 Swarm 的任务编号从 1 重新开始
+    const taskListId = sanitizeName(finalTeamName)
+    await resetTaskList(taskListId)
+    setLeaderTeamName(sanitizeName(finalTeamName))
+  }
+})</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ③ "一个 Leader 同时只能领导一个团队"——这个约束防止了嵌套 Swarm 导致的状态复杂性爆炸。Swarm 是线性的：Leader → 团队，不是 Leader → 团队 A + Leader → 团队 B。
+          </p>
+          <p class="content-p">
+            ⑥ TeamFile 写到磁盘是<strong>跨进程协调</strong>的关键机制。不同的 tmux pane 里运行的 Worker 实例，通过读取同一个磁盘文件来发现团队成员和 Leader。这是一种简单有效的<strong>文件系统作为消息总线</strong>的模式。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — 文件系统作为 Swarm 协调总线</strong></p>
+            <p><strong>好在哪里</strong>：多个 Worker 进程之间需要协调，最简单可靠的方式不是搭消息中间件，而是用文件系统——每个进程都能读写文件，不需要额外的网络配置，天然跨进程，还自带持久化。TeamFile 就是这个"公告栏"，所有人看同一个文件就知道团队在哪、Leader 是谁、成员有哪些。</p>
+            <p><strong>如果不这样做</strong>：用 IPC、Socket、或进程间通信协议来协调，每个 Worker 进程启动时都要注册到某个服务，服务挂了整个 Swarm 就崩溃了。文件系统的简单性在这里胜过了架构的"优雅性"。就像村子里的公告栏——不如微信群快，但永远在那，停电了也看得见。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.5 AgentTool.tsx -->
+        <div id="code-agent" class="reveal">
+          <h3 class="content-h3">3.5 AgentTool.tsx：子代理的递归深度控制</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/tools/AgentTool/AgentTool.tsx</code> 第 82-102 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/tools/AgentTool/AgentTool.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 完整 schema（包含多智能体参数）
+const fullInputSchema = lazySchema(() => {
+  const multiAgentParams = z.object({
+    name: z.string().optional()  // ① 可命名 Agent，用于 SendMessage 寻址
+      .describe('Name for the spawned agent. Makes it addressable via SendMessage.'),
+    team_name: z.string().optional(),
+    mode: permissionModeSchema().optional(),
+  })
+  return baseInputSchema().merge(multiAgentParams).extend({
+    isolation: z.enum(['worktree']).optional()
+      .describe('Creates a temporary git worktree for isolated work.'),
+    cwd: z.string().optional()  // ② 覆盖工作目录
+      .describe('Absolute path to run the agent in.'),
+    model: z.enum(['sonnet', 'opus', 'haiku']).optional()
+      .describe("Optional model override for this agent."),
+    run_in_background: z.boolean().optional()
+      .describe('Set to true to run this agent in the background.'),
+  })
+})</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            ① <code>name</code> 参数让 Agent 可以被 <code>SendMessageTool</code> 寻址。没有名字的 Agent 只能通过 <code>task_id</code> 找到；有了 <code>name</code>，Coordinator 可以在多轮对话中用可读的名字持续引用同一个 Worker。
+          </p>
+          <p class="content-p">
+            <code>model</code> 参数允许对特定任务使用不同模型——研究任务用 Haiku（便宜快），实现任务用 Opus（质量高），这是<strong>按任务复杂度选模型</strong>的成本优化策略。
+          </p>
+          <p class="content-p">
+            <code>isolation: 'worktree'</code> 是一个深度特性：给 Agent 创建一个临时 git worktree，让它在完全隔离的代码副本上工作。多个实现 Worker 并行时不会互相覆盖文件，避免了"并行写同一文件"的数据竞争。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — git worktree 作为并行隔离的天然沙盒</strong></p>
+            <p><strong>好在哪里</strong>：让多个 Agent 并行改代码，最怕的是 A 修了文件 X，B 也修文件 X，两人改完后 merge 一片混乱。git worktree 天然解决这个问题：每个 Agent 在自己的工作树里工作，互不干扰，最后 merge 时走 git 的标准冲突解决流程，而不是两个 Agent 互相覆盖文件。</p>
+            <p><strong>如果不这样做</strong>：多个 Agent 在同一工作目录并行写文件，就像多个人同时在同一张白纸上写字——速度快了，但结果不可预料。worktree 相当于给每个人发一张复印件，各自写完再汇总，干净多了。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.6 LocalMainSessionTask.ts -->
+        <div id="code-main-session" class="reveal">
+          <h3 class="content-h3">3.6 LocalMainSessionTask.ts：主会话后台化</h3>
+          <p class="content-p">
+            <strong>文件</strong>：<code>src/tasks/LocalMainSessionTask.ts</code> 第 1-57 行
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/tasks/LocalMainSessionTask.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">/**
+ * LocalMainSessionTask - Handles backgrounding the main session query.
+ *
+ * 当用户在查询进行中按两次 Ctrl+B 时：
+ * - 查询继续在后台运行
+ * - UI 清空，显示新的输入提示符
+ * - 查询完成时发送通知
+ */
+
+// 主会话任务用 's' 前缀（区别于 agent 的 'a' 前缀）
+function generateMainSessionTaskId(): string {
+  const bytes = randomBytes(8)
+  let id = 's'
+  for (let i = 0; i &lt; 8; i++) {
+    id += TASK_ID_ALPHABET[bytes[i]! % TASK_ID_ALPHABET.length]
+  }
+  return id
+}
+
+export function registerMainSessionTask(
+  description: string,
+  setAppState: SetAppState,
+  mainThreadAgentDefinition?: AgentDefinition,
+  existingAbortController?: AbortController,  // ① 复用已有的 AbortController
+): { taskId: string; abortSignal: AbortSignal } {
+  const taskId = generateMainSessionTaskId()
+  // ...
+}</code></pre>
+          </div>
+
+          <p class="content-p" style="margin-top: var(--space-lg);">
+            主会话后台化（Ctrl+B×2）是一个"任务系统意识到人类注意力的有限性"的设计。当你触发了一个需要 3 分钟的 AI 任务，你不用盯着进度条——按两次 Ctrl+B，任务继续跑，你可以开新的对话。完成后它会通知你。
+          </p>
+          <p class="content-p">
+            ① <code>existingAbortController</code> 参数允许复用已有的 AbortController。主会话后台化时，不是杀掉当前请求重新启动，而是把同一个请求的控制权"交接"给任务系统，后台继续运行同一个 HTTP 流。
+          </p>
+
+          <blockquote class="design-review">
+            <p><strong>💡 设计点评 — AbortController 作为任务控制权的凭证</strong></p>
+            <p><strong>好在哪里</strong>：同一个 <code>AbortController</code> 实例被传递，意味着"谁拿着这个 controller，谁就能叫停这个任务"。从前台传给任务系统，控制权无缝转移，不需要重建请求、不需要重置上下文，就像你把一张写着"停工命令"的纸条从一个人手里传到另一个人手里——命令还是同一张纸，只是执行权换人了。</p>
+          </blockquote>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §4 Harness Engineering
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <!-- 4.1 多智能体是"力量放大器" -->
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 Harness 视角：多智能体是"力量放大器"</h3>
+          <p class="content-p">
+            单个 Claude 实例是一把"瑞士军刀"——什么都能干，但同一时刻只能干一件事。多智能体协作是"工厂流水线"——各专其职，并行推进，整体吞吐量远超单人。
+          </p>
+          <p class="content-p">Claude Code 的多智能体架构在 Harness Engineering 维度上体现了三个层次：</p>
+
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>层次</th>
+                <th>机制</th>
+                <th>Harness 作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>约束层</strong></td>
+                <td>Coordinator 系统提示（反模式禁令、自包含 prompt 要求）</td>
+                <td>防止智能体退化为"传声筒"</td>
+              </tr>
+              <tr>
+                <td><strong>赋能层</strong></td>
+                <td><code>isolation: 'worktree'</code>、MCP 工具继承、技能传递</td>
+                <td>让每个 Worker 有独立的能力边界</td>
+              </tr>
+              <tr>
+                <td><strong>编排层</strong></td>
+                <td>Research → Synthesis → Implement → Verify 四阶段工作流</td>
+                <td>保证整体任务有序推进，不产生循环依赖</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 4.2 大模型应用启发 -->
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 启发 1：Coordinator 一定要自己"综合"，不要转包理解</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              最常见的多智能体失败模式是：Coordinator 把 Worker A 的结果原封不动转发给 Worker B。<strong>实践建议</strong>：设计多智能体系统时，明确规定 Orchestrator 层必须"消化"上游结果，产出具体的下游指令（文件路径 + 行号 + 具体操作），而不是把原始结果透传下去。
+            </p>
+          </div>
+
+          <div class="callout callout-info">
+            <div class="callout-title"><span>🔍</span> 启发 2：并行读，串行写</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              Coordinator 系统提示里说得很清楚："Read-only tasks — run in parallel freely; Write-heavy tasks — one at a time per set of files."<strong>实践建议</strong>：明确区分"探索型任务"（可大量并行）和"变更型任务"（需要按文件集序列化），并在调度器里显式实现这个约束。
+            </p>
+          </div>
+
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>🛡️</span> 启发 3：任务的"终态守卫"是多智能体系统的基础设施</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <strong>实践建议</strong>：在你的任务系统里，第一个就实现"终态守卫"函数，并在所有涉及任务状态变更的代码路径前检查。这个函数看起来简单（三行代码），但是防止了一大类难以调试的竞态 bug。
+            </p>
+          </div>
+
+          <div class="callout callout-idea">
+            <div class="callout-title"><span>📡</span> 启发 4：消息协议的结构化</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm);">
+              <code>&lt;task-notification&gt;</code> XML 格式包含了 Coordinator 做决策所需的最小必要信息。<strong>实践建议</strong>：多 Agent 之间的消息协议要结构化，不要用自然语言传递状态——用机器可解析的格式（JSON/XML），包含明确的任务 ID、状态枚举值、结果正文。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §5 思考题
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题</h2>
+          <p class="content-p">点击展开参考答案，检验你的理解深度。</p>
+        </div>
+
+        <div class="reveal">
+          <details class="quiz-item">
+            <summary>题目 1：为什么 <code>generateTaskId</code> 用 <code>randomBytes</code> 而不是 <code>Math.random()</code>？符号链接攻击是怎么发生的？</summary>
+            <div class="quiz-answer">
+              <p><code>Math.random()</code> 是伪随机数，种子固定时输出可预测。攻击者如果知道程序启动时间，可以预测接下来的 task ID，进而提前在对应路径创建一个指向任意文件的符号链接（symlink）。当任务系统向 <code>outputFile</code> 路径写任务输出时，实际上写入了攻击者指定的位置——这是<strong>预测性符号链接攻击（predictive symlink attack）</strong>。</p>
+              <p><code>randomBytes</code> 使用操作系统的加密安全随机源（<code>/dev/urandom</code> 或 Windows CNG），输出不可预测。再加上 36^8 ≈ 2.8 万亿种组合，枚举所有可能性的时间成本远超攻击价值。这是一个"CLI 工具的安全边界"意识：你的输出文件路径，是一个隐形的攻击面。</p>
+            </div>
+          </details>
+
+          <details class="quiz-item">
+            <summary>题目 2：<code>shouldDefer: true</code> 在 <code>TeamCreateTool</code> 里意味着什么？为什么创建团队需要 defer？</summary>
+            <div class="quiz-answer">
+              <p><code>shouldDefer: true</code> 告诉权限系统，这个工具的调用需要经过"推迟审批"流程，而不是直接执行。当模型决定调用 <code>TeamCreateTool</code> 时，系统不会立即执行，而是先展示给用户确认。</p>
+              <p>对创建团队操作来说，这很合理：创建团队会在 AppState 里产生全局状态变更（<code>teamContext</code>）、在磁盘上写文件（TeamFile）、重置任务列表——这些都是有实质影响的副作用，不应该被模型悄悄执行。<code>shouldDefer: true</code> 确保了人在决策链里，模型只能"建议"创建团队，而不能"自主"创建。</p>
+            </div>
+          </details>
+
+          <details class="quiz-item">
+            <summary>题目 3：Coordinator 系统提示里说"Continue vs. Spawn"是按"context overlap"决定的。在实际工程里，你如何判断一个 Worker 的上下文是"帮助"还是"噪音"？</summary>
+            <div class="quiz-answer">
+              <p>系统提示给出了几个判断规则：</p>
+              <p><strong>Continue（续接同一 Worker）</strong>：当 Worker 已经探索了接下来需要修改的那些文件（研究完成后继续实现）；当 Worker 刚刚报告了失败，需要基于失败上下文纠错（Worker 知道它刚做了什么）。</p>
+              <p><strong>Spawn Fresh（开新 Worker）</strong>：当 Worker 探索的范围太广，但实现只需要其中一小部分（广泛探索的上下文会分散注意力）；当要做验证时（验证者不应该带着实现者的假设）；当上次实现走错了方向（错误的上下文会拉偏重试）。</p>
+              <p>更底层的判断逻辑是：这个 Worker 的 context window 里，有多少比例是接下来任务<strong>真正需要</strong>的内容？如果超过 50%，续接；如果不足 30%，开新。对 Claude 这种 token 计费的场景，这也是一个成本优化决策。</p>
+            </div>
+          </details>
+
+          <details class="quiz-item">
+            <summary>题目 4：<code>getCoordinatorUserContext</code> 里的 scratchpadDir 是什么？它解决了多 Worker 场景下的什么问题？</summary>
+            <div class="quiz-answer">
+              <p><code>scratchpadDir</code> 是一个由 Coordinator 提供给所有 Worker 的<strong>共享暂存目录路径</strong>。Workers 可以在这里读写文件，而不会触发权限提示。</p>
+              <p>它解决的是<strong>跨 Worker 知识共享</strong>问题：在多 Worker 协作中，Worker A 在研究阶段发现了一些有用的上下文（API 签名、数据结构定义等），想把这些传递给 Worker B（实现阶段）。如果通过 Coordinator 转发，存在信息损耗；如果 A 把结果写进 scratchpadDir，B 直接读取原始内容，精准无损。</p>
+              <p>这是一种<strong>结构化持久化知识库</strong>的用途：不同 Worker 在任务过程中积累的结构化知识可以通过 scratchpadDir 持续可用。开启条件是 Statsig feature gate <code>tengu_scratch</code>，说明这是一个实验性功能。</p>
+            </div>
+          </details>
+
+          <details class="quiz-item">
+            <summary>题目 5：如果一个 Worker 任务失败了（status: 'failed'），Coordinator 有哪些恢复策略？什么时候续接同一 Worker，什么时候开新 Worker？</summary>
+            <div class="quiz-answer">
+              <p>系统提示里给出了明确指导：</p>
+              <p><strong>优先 Continue 同一 Worker</strong>：Worker 失败时最有价值的资产是它的<strong>失败上下文</strong>——它看到了什么错误、尝试了什么方法、错误发生在哪一行。用 <code>SendMessageTool</code> 把具体的纠错指令发给它，它能直接基于错误上下文修正。</p>
+              <p><strong>开新 Worker 的时机</strong>：如果 Worker 在某个方向上"走歪了"（实现了错误的设计方案），续接可能导致它继续沿着错误方向修补；如果 Worker 经历了多次失败，context window 里充满了失败的尝试，可能已经形成了"锚定效应"——新开一个 Worker，给它只包含成功路径的精确 spec。</p>
+              <p>系统提示明确说"Continue workers whose work is complete via SendMessage to take advantage of their loaded context"——失败不等于上下文无用，通常继续是第一选择。只有当方向根本性错误时，才考虑开新。</p>
+            </div>
+          </details>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">
+              📌 本课小结
+            </h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">
+              Claude Code 的多智能体任务系统是一个精心设计的"分布式项目管理"架构：
+            </p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>任务分类</strong>：七种 TaskType + 前缀 ID，类型可读性优先于纯随机</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>终态守卫</strong>：isTerminalTaskStatus 防止向死任务注入消息</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>Coordinator 模式</strong>：综合必须在协调层，不得转包理解</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>文件系统总线</strong>：TeamFile 是跨进程协调的公告栏</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           课程导航页脚
+      ══════════════════════════════════════ -->
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="21.html" class="nav-prev">
+          ← 上一课：权限系统与安全沙盒
+        </a>
+
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+        <a href="23.html" class="nav-next">
+          下一课：工具能力扩展 →
+        </a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     页脚
+═══════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="21.html">← 上一课</a>
+        <a href="23.html">下一课 →</a>
+      </nav>
+
+      <p class="footer-copy">
+        第22课 · 长程任务与多智能体协作 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<!-- 公共 JS -->
+<script src="../js/main.js"></script>
+
+<!-- 目录高亮 scrollspy -->
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第08课：QueryEngine —— AI 对话的心脏 | Claude Code 教程</title>
+  <meta name="description" content="深入理解 QueryEngine 作为对话生命周期容器的设计，掌握 AsyncGenerator 流式输出、tool_use 消息循环编排与上下文压缩策略。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-md); }
+    .code-anno-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .code-anno-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.6; }
+    .code-anno-table td:first-child { font-family: var(--font-code); font-size: 12px; color: var(--accent-orange); white-space: nowrap; min-width: 60px; }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-08">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-08" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第三阶段 · 核心引擎与扩展系统</span>
+      <span class="sep">/</span>
+      <span>第08课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🧠</span>
+      <span>LESSON 08 · PHASE 03</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      QueryEngine<br/>
+      <span class="gradient-text">AI 对话的心脏</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第三阶段 · 核心引擎与扩展系统</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐ 难度较高</span>
+      <span class="tag tag-green">前置：第06、07课</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>深刻理解 <code>QueryEngine</code> 作为"一次对话生命周期容器"的设计定位，掌握与 <code>query.ts</code> 的职责边界</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握 <code>submitMessage</code> 的 <strong>AsyncGenerator</strong> 流式输出机制，理解为什么采用生成器而非回调</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>透彻理解 tool_use / tool_result 的<strong>消息循环编排</strong>：LLM 如何请求工具、工具如何回馈结果</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>了解三种<strong>上下文压缩策略</strong>（autocompact / microcompact / reactiveCompact）及其触发条件</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>掌握<strong>权限拒绝追踪</strong>、<strong>令牌用量累计</strong>、<strong>成本统计</strong>的实现方式与设计意图</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-boundary">1.1 职责边界</a></div>
+        <div class="toc-item sub"><a href="#concept-struct">1.2 关键数据结构</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-flow">2.1 整体数据流</a></div>
+        <div class="toc-item sub"><a href="#arch-persist">2.2 先持久化再调用</a></div>
+        <div class="toc-item sub"><a href="#arch-generator">2.3 AsyncGenerator 价值</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-init">3.1 类定义与初始化</a></div>
+        <div class="toc-item sub"><a href="#code-permission">3.2 权限拒绝追踪包装器</a></div>
+        <div class="toc-item sub"><a href="#code-transcript">3.3 转录持久化时机</a></div>
+        <div class="toc-item sub"><a href="#code-loop">3.4 query 循环消息处理</a></div>
+        <div class="toc-item sub"><a href="#code-cost">3.5 成本与用量追踪</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-boundary" class="reveal">
+          <h3 class="content-h3">1.1 QueryEngine vs query.ts — 职责边界</h3>
+          <p class="content-p">很多初学者会混淆这两个文件，以下是关键区分：</p>
+          <table class="compare-table">
+            <thead>
+              <tr><th>维度</th><th><code>QueryEngine</code>（类）</th><th><code>query.ts</code>（函数）</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>抽象层次</strong></td><td>对话容器，跨轮次持久化状态</td><td>单次查询循环，无状态</td></tr>
+              <tr><td><strong>生命周期</strong></td><td>One per conversation，跨多次 <code>submitMessage</code></td><td>One per <code>submitMessage</code> call</td></tr>
+              <tr><td><strong>持有状态</strong></td><td>消息历史、文件缓存、用量统计、权限拒绝</td><td>无持久状态</td></tr>
+              <tr><td><strong>对外接口</strong></td><td><code>submitMessage(prompt)</code> 返回 AsyncGenerator</td><td>被 <code>QueryEngine</code> 内部调用</td></tr>
+              <tr><td><strong>压缩触发</strong></td><td>在 <code>submitMessage</code> 中决策是否压缩</td><td>执行压缩逻辑</td></tr>
+            </tbody>
+          </table>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 设计思想</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+              之所以把"对话状态"与"查询逻辑"分离，是为了让 <code>query.ts</code> 可以在多代理场景中被 <code>AgentTool</code> 直接复用，而不需要携带完整的对话容器。
+            </p>
+          </div>
+        </div>
+
+        <div id="concept-struct" class="reveal">
+          <h3 class="content-h3">1.2 关键数据结构</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">结构示意 · src/QueryEngine.ts</span>
+            </div>
+            <pre><code class="language-typescript">QueryEngine (src/QueryEngine.ts)
+├── config: QueryEngineConfig          // 构造时注入，不可变配置
+├── mutableMessages: Message[]         // 跨轮次的对话历史（唯一可变核心状态）
+├── abortController: AbortController  // 会话级中断信号
+├── permissionDenials: SDKPermissionDenial[]  // 权限拒绝追踪
+├── totalUsage: NonNullableUsage       // 累计令牌用量（input + output + cache）
+├── readFileState: FileStateCache      // LRU 文件内容缓存
+├── discoveredSkillNames: Set&lt;string&gt;  // 当前轮次已发现的技能（Turn-scoped）
+└── loadedNestedMemoryPaths: Set&lt;string&gt;  // 已加载的嵌套内存路径</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-flow" class="reveal">
+          <h3 class="content-h3">2.1 整体数据流</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    A["用户输入 submitMessage(prompt)"] --> B["processUserInput\n解析斜杠命令/构建消息"]
+    B --> C["recordTranscript\n持久化到磁盘（关键：在API调用前）"]
+    C --> D["query 循环\nquery.ts"]
+    D --> E["LLM API 流式调用\ncallModel"]
+    E --> F["StreamingToolExecutor\n并发执行工具调用"]
+    F --> G["tool_result 消息\n回传给下一轮"]
+    G --> D
+    D --> H["SDKMessage yield\n流式输出给消费者"]
+    H --> I["recordTranscript\n记录 assistant/user 消息"]
+    I --> J["最终 result 消息\n含成本/用量/停止原因"]
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-persist" class="reveal">
+          <h3 class="content-h3">2.2 为什么在 API 调用前先持久化？</h3>
+          <p class="content-p">这是 <code>QueryEngine</code> 中最精妙的一个设计决策（源码 L436-L462 有详细注释）：</p>
+          <div class="callout callout-warning">
+            <div class="callout-title"><span>⚠️</span> 问题场景</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">如果进程在 API 响应返回前被杀死（用户点击 Stop），消息历史里只有队列操作条目。<code>getLastSessionLog</code> 会过滤掉这些条目，返回 null，导致 <code>--resume</code> 失败并报错 "No conversation found"。</p>
+          </div>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>✅</span> 解决方案</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">在 API 调用前就先写入转录文件，这样即使进程被提前终止，对话也是可恢复的。就像外卖员接单后先发短信给商家——就算中途断网，起码商家知道有这个订单。</p>
+          </div>
+        </div>
+
+        <div id="arch-generator" class="reveal">
+          <h3 class="content-h3">2.3 AsyncGenerator 的设计价值</h3>
+          <p class="content-p"><code>submitMessage</code> 是一个 <code>async *</code> 生成器函数，这不是随机选择：</p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 22px; margin-bottom: var(--space-sm);">🔄</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">背压控制</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">消费者（CLI/SDK）按需 <code>yield</code>，不会一次性把所有消息缓冲在内存</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 22px; margin-bottom: var(--space-sm);">⚡</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">实时反馈</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">用户能看到 AI 的流式输出，而不是等整个响应结束才看到</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 22px; margin-bottom: var(--space-sm);">🔍</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">中间状态透明</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">工具调用开始、工具执行结果、中间思考步骤，消费者都能实时感知</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 22px; margin-bottom: var(--space-sm);">🛑</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">可取消性</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">消费者停止迭代即等于取消，AbortController 同步传播</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码深度走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+          <p class="content-p">以下五段代码是理解 QueryEngine 的核心切入点，逐行拆解其设计意图。</p>
+        </div>
+
+        <!-- 3.1 类定义 -->
+        <div id="code-init" class="reveal">
+          <h3 class="content-h3">3.1 类定义与初始化</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/QueryEngine.ts</code> L184-L207</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🏗️ 依赖注入</span>
+            <span class="pattern-badge">📦 状态内聚</span>
+            <span class="pattern-badge">🔄 会话恢复</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,11,13"><code class="language-typescript">export class QueryEngine {
+  private config: QueryEngineConfig
+  private mutableMessages: Message[]              // ⭐ 核心状态：跨轮次消息历史
+  private abortController: AbortController
+  private permissionDenials: SDKPermissionDenial[]
+  private totalUsage: NonNullableUsage
+  private hasHandledOrphanedPermission = false    // 孤儿权限只处理一次的防重入标志
+  private readFileState: FileStateCache
+  private discoveredSkillNames = new Set&lt;string&gt;()
+  private loadedNestedMemoryPaths = new Set&lt;string&gt;()
+
+  constructor(config: QueryEngineConfig) {
+    this.config = config
+    this.mutableMessages = config.initialMessages ?? []  // 支持恢复会话
+    this.abortController = config.abortController ?? createAbortController()
+    this.permissionDenials = []
+    this.readFileState = config.readFileCache    // 注入外部 LRU 缓存
+    this.totalUsage = EMPTY_USAGE
+  }
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 状态作用域精确分离</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>discoveredSkillNames</code> 是 Turn-scoped（每轮清空），<code>loadedNestedMemoryPaths</code> 是 Session-scoped（跨轮保留）。这就像餐厅服务员的工作记录：今天服务过哪些桌是"今天的"（Turn），但哪些食材已入库是"餐厅的"（Session）。<code>config.initialMessages</code> 支持会话恢复（<code>--resume</code> 特性的关键）。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：技能发现标记跨轮次误传，会影响 <code>was_discovered</code> 分析指标准确性；嵌套内存路径每轮重复加载，造成性能浪费。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 权限包装器 -->
+        <div id="code-permission" class="reveal">
+          <h3 class="content-h3">3.2 权限拒绝追踪包装器</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/QueryEngine.ts</code> L243-L271</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🎭 装饰器模式</span>
+            <span class="pattern-badge">🔍 AOP 切面</span>
+            <span class="pattern-badge">📊 可观测性</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="3,6,9,13"><code class="language-typescript">const wrappedCanUseTool: CanUseToolFn = async (
+  tool, input, toolUseContext, assistantMessage, toolUseID, forceDecision,
+) => {
+  const result = await canUseTool(      // ① 调用真实的权限检查
+    tool, input, toolUseContext, assistantMessage, toolUseID, forceDecision,
+  )
+
+  // 追踪拒绝用于 SDK 上报
+  if (result.behavior !== 'allow') {    // ② 只有非允许时才记录
+    this.permissionDenials.push({
+      tool_name: sdkCompatToolName(tool.name),  // ③ 名称适配（SDK 兼容格式）
+      tool_use_id: toolUseID,
+      tool_input: input,
+    })
+  }
+
+  return result  // ④ 透明传递原始决策，不影响正常流程
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 装饰器模式（Decorator Pattern）</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>wrappedCanUseTool</code> 就像在门口装了一个"摄像头"——保安（<code>canUseTool</code>）照常工作，摄像头只是悄悄记录谁被拒绝进门，完全不干扰保安的决策。这是 AOP（面向切面编程）思想的实际运用。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：要么修改 <code>canUseTool</code> 自己记录拒绝（破坏单一职责），要么在每个调用 <code>canUseTool</code> 的地方手动记录（遗漏风险高，8+ 条调用路径）。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 转录持久化 -->
+        <div id="code-transcript" class="reveal">
+          <h3 class="content-h3">3.3 转录持久化的时机控制</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/QueryEngine.ts</code> L436-L463</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🛡️ 防御性编程</span>
+            <span class="pattern-badge">⏰ 时机哲学</span>
+            <span class="pattern-badge">🔄 模式自适应</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="3,5,9"><code class="language-typescript">if (persistSession && messagesFromUserInput.length > 0) {
+  const transcriptPromise = recordTranscript(messages)
+  if (isBareMode()) {
+    void transcriptPromise           // ① 裸模式：fire-and-forget
+  } else {
+    await transcriptPromise          // ② 正常模式：同步等待写入完成
+    if (
+      isEnvTruthy(process.env.CLAUDE_CODE_EAGER_FLUSH) ||
+      isEnvTruthy(process.env.CLAUDE_CODE_IS_COWORK)
+    ) {
+      await flushSessionStorage()    // ③ 协作场景需要立即 flush
+    }
+  }
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 防御性编程的时机哲学</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>："先写用户消息，再调 API" 就像外卖员接单后先发短信给商家——就算中途断网，起码商家知道有这个订单。根据运行模式区分三种策略：<code>--bare</code> 模式不阻塞（脚本不需要可恢复性），普通模式等待写入，<code>COWORK</code> 场景额外 flush 保证跨进程一致性。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：用户输入后进程崩溃，<code>--resume</code> 时报 "No conversation found"，对话丢失无法恢复，用户体验极差。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 query 循环 -->
+        <div id="code-loop" class="reveal">
+          <h3 class="content-h3">3.4 query 循环消息处理</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/QueryEngine.ts</code> L675-L686</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔗 链式生成器</span>
+            <span class="pattern-badge">🏭 流水线模式</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="2,8,11"><code class="language-typescript">for await (const message of query({
+  messages,
+  systemPrompt,
+  userContext,
+  systemContext,
+  canUseTool: wrappedCanUseTool,       // 使用包装后的权限检查器
+  toolUseContext: processUserInputContext,
+  fallbackModel,
+  querySource: 'sdk',
+  maxTurns,
+  taskBudget,
+})) {
+  // 处理 assistant、user 和 compact boundary 消息
+  if (
+    message.type === 'assistant' ||
+    message.type === 'user' ||
+    (message.type === 'system' && message.subtype === 'compact_boundary')
+  ) {
+    // ...记录转录、更新用量统计
+  }
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 链式生成器管道</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>query()</code> 函数本身是一个 AsyncGenerator，<code>QueryEngine</code> 通过 <code>for await...of</code> 消费它，并在处理每条消息后决定是否向上游 yield。这形成了"消费-处理-再产出"的链式生成器管道，就像工厂流水线：每个环节处理自己负责的部分，不关心上下游如何工作。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 成本追踪 -->
+        <div id="code-cost" class="reveal">
+          <h3 class="content-h3">3.5 成本与用量追踪</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/QueryEngine.ts</code>（最终 result 消息构建）</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">📊 单一职责</span>
+            <span class="pattern-badge">🌐 全局成本追踪</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="5,8,9,10"><code class="language-typescript">yield {
+  type: 'result',
+  subtype: 'success',
+  is_error: false,
+  duration_ms: Date.now() - startTime,        // 总耗时
+  duration_api_ms: getTotalAPIDuration(),      // 纯 API 时间（排除工具执行）
+  num_turns: messages.length - 1,             // 实际轮次数
+  result: resultText ?? '',
+  stop_reason: null,
+  session_id: getSessionId(),
+  total_cost_usd: getTotalCost(),             // 从 cost-tracker 全局获取
+  usage: this.totalUsage,                     // 累计 input/output/cache tokens
+  modelUsage: getModelUsage(),                // 按模型分类的用量
+  permission_denials: this.permissionDenials, // 本次会话的权限拒绝记录
+  fast_mode_state: getFastModeState(mainLoopModel, initialAppState.fastMode),
+  uuid: randomUUID(),
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 单一职责 + 可观测性</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>QueryEngine</code> 自己不做成本计算，而是委托给 <code>cost-tracker</code> 模块（全局单例）。这就像餐厅不自己管账，而是交给财务部门——收银员（QueryEngine）只管服务，财务（cost-tracker）只管记账，多个收银台（多代理场景）的数据都能汇总到同一个财务系统。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：多代理场景下每个 QueryEngine 自己算成本，无法跨实例聚合，SDK 报告的总成本数据会不准确。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 驾驭工程视角</h3>
+          <p class="content-p">QueryEngine 是 Claude Code 驾驭 AI 能力的核心枢纽，它不是"让 AI 随便跑"，而是通过精确的工程设计来<strong>约束、增强、编排</strong> AI 的行为：</p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🔒 约束</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• <code>wrappedCanUseTool</code> 在权限层面统一拦截，让 AI 的每个工具调用都可被审计</li>
+                <li>• 转录持久化在调用 API 前完成，确保即使 AI 响应超时也有恢复入口</li>
+                <li>• <code>permissionDenials</code> 追踪让 AI 的"越权尝试"对上游 SDK 完全可见</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🚀 增强</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• AsyncGenerator 接口让 AI 的流式思考过程实时透明，而非黑盒等待</li>
+                <li>• 系统提示三层组合（自定义层 → 内存层 → 追加层）让 AI 的上下文可精确控制</li>
+                <li>• <code>readFileState</code> LRU 缓存让 AI 重复读取文件时不必每次走磁盘</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-purple); grid-column: 1 / -1;">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🎯 编排</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• 将无状态的 <code>query.ts</code> 与有状态的 <code>QueryEngine</code> 分离，使同一个查询引擎可被主代理、子代理、SDK 复用</li>
+                <li>• <code>discoveredSkillNames</code> 的 Turn-scoped 设计确保 AI 每轮都能正确感知技能状态</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">4.2 对大模型应用的启发</h3>
+          <div style="display: flex; flex-direction: column; gap: var(--space-md);">
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>1️⃣</span> 先持久化，再调用 API</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">任何可能失败的 LLM 调用，都应在调用前先持久化用户意图。这是 AI 应用的防御性工程基线。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>2️⃣</span> 用装饰器模式收集 AI 行为数据</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">不要修改核心权限/工具逻辑来加遥测，而是用包装器透明插入。调用路径变化时不需要更新监控代码。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>3️⃣</span> 生成器接口优于回调</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">对于 LLM 的流式输出，AsyncGenerator 比回调和 Event Emitter 更自然——消费者主动拉取，背压自动管理，中断干净。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>4️⃣</span> 成本追踪应该全局化</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">在多代理架构中，每个 AI 实例的成本应汇总到统一的全局追踪器，而非各自维护。方便 SDK 调用者在任何时候拿到准确的总成本。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>5️⃣</span> 状态作用域要显式标注</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Turn-scoped vs Session-scoped 的区分应该通过命名或注释显式说明，而非隐式约定。AI 应用的状态管理比普通应用更复杂，歧义会带来难以排查的 bug。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：<code>QueryEngine</code> 为什么不直接暴露 <code>mutableMessages</code>，而是通过 <code>getMessages()</code> 方法获取？这体现了什么面向对象原则？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：这体现了<strong>封装原则（Encapsulation）</strong>。<code>mutableMessages</code> 是会话状态的核心，如果直接暴露，外部代码可能在任意时机修改它，破坏 QueryEngine 对消息历史的一致性保证（比如在写入转录文件时同时被外部修改）。<code>getMessages()</code> 返回的是副本或受控视图，让 QueryEngine 保持对消息历史的独占控制权。在多代理场景中，这种封装防止了子代理误改主代理的消息历史。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：为什么 <code>discoveredSkillNames</code> 是 Turn-scoped 而不是 Session-scoped？如果改成 Session-scoped 会产生什么问题？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>discoveredSkillNames</code> 用于标记"本轮首次发现的技能"，影响 <code>was_discovered</code> 遥测字段的准确性。如果改成 Session-scoped，第一轮发现的技能会被标记为 discovered，但第二轮调用同一技能时，<code>was_discovered</code> 仍为 true（因为 Set 没有清空），导致遥测数据失真——系统会错误地认为每次调用都是"首次发现"。在 SDK 多轮模式下，这个 Set 还会无限增长，造成内存泄漏。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：<code>query()</code> 函数被设计成可以被 <code>AgentTool</code> 直接调用（绕过 <code>QueryEngine</code>），这种设计的优点和缺点分别是什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<strong>优点</strong>：子代理不需要完整的会话容器（转录持久化、权限拒绝追踪等是主代理才需要的），直接使用轻量的 <code>query()</code> 降低了子代理的启动成本，也让 <code>query.ts</code> 在多个场景（主代理、子代理、恢复场景）中复用。<strong>缺点</strong>：直接调用 <code>query()</code> 会跳过 <code>QueryEngine</code> 提供的权限拒绝追踪、技能加载、系统初始化等外围功能，调用方必须清楚自己在绕过哪些能力，这增加了使用门槛和出错风险。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：<code>submitMessage</code> 中有两次构建 <code>processUserInputContext</code> 的地方（L335 和 L492），为什么需要两次？能合并成一次吗？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：两次构建对应两个不同的时机：第一次在解析用户输入时（L335），此时需要携带当前轮次的初始状态；第二次在进入 query 循环前（L492），此时可能经历了斜杠命令处理、消息转换等中间步骤，上下文中的某些字段（如文件缓存、技能列表）可能已更新。合并成一次会使两个阶段共享同一个上下文对象，如果后续阶段修改了它，会影响前面阶段的行为，产生隐式耦合。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 上下文压缩</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/services/compact/</code> 目录，理解三种压缩策略的实现细节</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 流式 API 与非流式回退</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/services/api/claude.ts</code> 中的 <code>callModel</code>，理解流式失败时如何回退</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 会话恢复机制</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/utils/sessionStorage.ts</code>，理解 <code>--resume</code> 的完整实现</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>💰</span> 令牌预算控制</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">在 <code>query.ts</code> 中搜索 <code>TOKEN_BUDGET</code>，理解动态令牌分配策略</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);"><code>QueryEngine</code> 是 Claude Code 中最核心的类之一，它的设计哲学可以概括为：</p>
+            <blockquote style="border-left: 3px solid var(--accent-blue); padding-left: var(--space-lg); color: var(--text-heading); font-style: italic; margin: var(--space-md) 0;">"对话容器"的本质是状态管理，而非逻辑执行。</blockquote>
+            <div class="grid-2" style="gap: var(--space-md); margin-top: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>职责分离</strong>：QueryEngine 持状态，query.ts 执行逻辑，两者都保持专注可复用</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>防御性工程</strong>：先持久化再调用，确保任何时候都能恢复</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>装饰器追踪</strong>：权限拒绝通过包装器透明记录，不破坏原有逻辑</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>流式生成器</strong>：AsyncGenerator 使实时输出、中断控制优雅自然</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="07.html" class="nav-prev">← 上一课：命令系统深度解析</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="09.html" class="nav-next">下一课：智能代理工具与多代理协作 →</a>
+      </nav>
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="07.html">← 第07课</a>
+        <a href="../index.html#phases">课程总览</a>
+        <a href="09.html">第09课 →</a>
+      </nav>
+      <p class="footer-copy">第08课 · QueryEngine · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+</body>
+</html>

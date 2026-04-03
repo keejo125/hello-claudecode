@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第09课：智能代理工具与多代理协作 | Claude Code 教程</title>
+  <meta name="description" content="深入理解 AgentTool 的 Fork 子代理机制、多代理协作实现、工具白名单控制与代理内存三种作用域。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; max-width: 1400px; margin: 0 auto; padding: 0; align-items: start; }
+    .lesson-toc { position: sticky; top: 76px; height: calc(100vh - 76px); overflow-y: auto; padding: var(--space-xl) var(--space-lg); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-cyan); margin-bottom: var(--space-md); }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a { display: block; padding: 6px 10px; font-size: 13px; color: var(--text-secondary); border-radius: var(--radius-sm); border-left: 2px solid transparent; transition: all var(--transition-fast); line-height: 1.4; }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .cache-diagram { background: #1e1e2e; color: #cdd6f4; font-family: var(--font-code); font-size: 13px; padding: var(--space-lg); border-radius: var(--radius-md); margin: var(--space-md) 0; line-height: 1.7; overflow-x: auto; }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-09">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-09" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第三阶段 · 核心引擎与扩展系统</span>
+      <span class="sep">/</span>
+      <span>第09课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🤖</span>
+      <span>LESSON 09 · PHASE 03</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      智能代理工具<br/>
+      <span class="gradient-text">多代理协作架构</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第三阶段 · 核心引擎与扩展系统</span>
+      <span class="tag tag-orange">⏱ 建议 120 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐⭐ 高难度</span>
+      <span class="tag tag-green">前置：第08、06课</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解 <code>AgentTool</code> 的 <strong>Fork 子代理机制</strong>：如何继承父上下文、如何最大化 prompt cache 命中</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握<strong>多代理协作</strong>的实现：同步 vs 异步、工作树隔离、团队模式</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>了解所有<strong>内置代理类型</strong>（探索/计划/验证/通用等）的职责边界与工具限制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>深入理解<strong>代理内存管理</strong>：三种作用域（user/project/local）、快照机制</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>掌握<strong>代理颜色分配</strong>体系及其在 UI 可观测性上的价值</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-recursive">1.1 递归代理结构</a></div>
+        <div class="toc-item sub"><a href="#concept-sync-async">1.2 同步 vs 异步代理</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-layered">2.1 分层架构</a></div>
+        <div class="toc-item sub"><a href="#arch-separation">2.2 runAgent 分离原因</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-fork">3.1 Fork 子代理机制</a></div>
+        <div class="toc-item sub"><a href="#code-recursive-protect">3.2 递归 Fork 保护</a></div>
+        <div class="toc-item sub"><a href="#code-color">3.3 代理颜色管理</a></div>
+        <div class="toc-item sub"><a href="#code-memory">3.4 三种内存作用域</a></div>
+        <div class="toc-item sub"><a href="#code-builtin">3.5 内置代理工具限制</a></div>
+        <div class="toc-item sub"><a href="#code-filter">3.6 工具过滤策略</a></div>
+        <div class="toc-item"><a href="#builtin-agents">§4 内置代理全景图</a></div>
+        <div class="toc-item"><a href="#snapshot">§5 快照三状态机</a></div>
+        <div class="toc-item"><a href="#harness">§6 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">6.1 驾驭工程视角</a></div>
+        <div class="toc-item sub"><a href="#harness-inspire">6.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§7 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-recursive" class="reveal">
+          <h3 class="content-h3">1.1 AgentTool 的本质：递归调用的自相似结构</h3>
+          <p class="content-p"><code>AgentTool</code> 是整个 Claude Code 中最复杂的工具，因为它实现了<strong>代理递归</strong>：一个 AI 实例可以调用另一个 AI 实例去执行子任务。这形成了一个树状的代理执行图。</p>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    A["主代理 (Main Agent)\nQueryEngine 驱动"] --> B["AgentTool.call()"]
+    B --> C["子代理 Alpha\nrunAgent 驱动"]
+    B --> D["子代理 Beta\nrunAgent 驱动"]
+    C --> E["工具调用: Bash, Read..."]
+    D --> F["再次 AgentTool.call()"]
+    F --> G["孙代理\n（递归深度限制）"]
+            </div>
+          </div>
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 关键洞察</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>runAgent.ts</code> 内部调用的是与主代理相同的 <code>query()</code> 函数，这意味着子代理具有与主代理完全相同的"思考→工具→思考"能力，只是工具池和权限可以受到限制。</p>
+          </div>
+        </div>
+
+        <div id="concept-sync-async" class="reveal">
+          <h3 class="content-h3">1.2 同步 vs 异步代理的抉择</h3>
+          <table class="compare-table">
+            <thead>
+              <tr><th>维度</th><th>同步代理</th><th>异步代理（后台任务）</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>触发条件</strong></td><td>默认行为</td><td><code>run_in_background: true</code> 或超时自动切换</td></tr>
+              <tr><td><strong>阻塞行为</strong></td><td>阻塞当前对话轮次</td><td>立即返回 agentId，通知异步到达</td></tr>
+              <tr><td><strong>UI 呈现</strong></td><td>工具调用内嵌显示</td><td>独立任务通知</td></tr>
+              <tr><td><strong>适用场景</strong></td><td>短任务、需要结果的后续步骤</td><td>长时间任务、可并行的独立工作</td></tr>
+              <tr><td><strong>资源隔离</strong></td><td>共享父进程内存</td><td>独立任务注册，有清理机制</td></tr>
+            </tbody>
+          </table>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>⏱</span> 自动后台化</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>getAutoBackgroundMs()</code> 函数实现了"自动后台化"——如果一个代理运行超过 120 秒还未完成，系统会自动将其转为后台任务，避免主对话长时间卡住。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-layered" class="reveal">
+          <h3 class="content-h3">2.1 AgentTool 的分层架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "入口层"
+        AT["AgentTool.tsx\n参数校验/权限/隔离/Fork判断"]
+    end
+    subgraph "执行引擎"
+        RA["runAgent.ts\n系统提示构建/工具池装配/查询循环"]
+        ATU["agentToolUtils.ts\n进度追踪/结果归并/手递手分类"]
+    end
+    subgraph "Fork 路径"
+        FS["forkSubagent.ts\n消息前缀构建/递归保护/缓存一致性"]
+    end
+    subgraph "代理定义"
+        LAD["loadAgentsDir.ts\nJSON/MD解析/工具白名单/内存配置"]
+        BA["builtInAgents.ts\n内置代理注册/特性门控制"]
+    end
+    subgraph "状态管理"
+        ACM["agentColorManager.ts\n颜色映射/主题色转换"]
+        AM["agentMemory.ts\n内存作用域/目录路径"]
+        AMS["agentMemorySnapshot.ts\n快照管理/版本比对"]
+    end
+    subgraph "恢复层"
+        RES["resumeAgent.ts\n转录重建/工作树回退/Fork恢复"]
+    end
+    AT --> RA
+    AT --> FS
+    AT --> LAD
+    RA --> ATU
+    RA --> AM
+    RA --> AMS
+    LAD --> BA
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-separation" class="reveal">
+          <h3 class="content-h3">2.2 为什么把 runAgent 从 AgentTool 中分离？</h3>
+          <p class="content-p">这是一个非常重要的架构决策。<code>runAgent.ts</code> 可以被以下场景复用：</p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 20px; margin-bottom: var(--space-sm);">🔄</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">AgentTool 同步路径</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">直接调用 runAgent，等待结果</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 20px; margin-bottom: var(--space-sm);">⚡</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">AgentTool 异步路径</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">通过 runAsyncAgentLifecycle 封装后调用</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg); grid-column: 1 / -1;">
+              <div style="font-size: 20px; margin-bottom: var(--space-sm);">🔁</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">resumeAgent.ts 的恢复路径</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">复用相同的 runAgent 接口，这体现了<strong>关注点分离（Separation of Concerns）</strong>原则</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码深度走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 Fork 机制 -->
+        <div id="code-fork" class="reveal">
+          <h3 class="content-h3">3.1 Fork 子代理机制 — 最精妙的 prompt cache 优化</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/tools/AgentTool/forkSubagent.ts</code> L60-L172</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🏆 享元模式</span>
+            <span class="pattern-badge">💰 Prompt Cache 优化</span>
+            <span class="pattern-badge">🔀 并发子代</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/AgentTool/forkSubagent.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="4,6,7,8"><code class="language-typescript">export const FORK_AGENT = {
+  agentType: FORK_SUBAGENT_TYPE,
+  whenToUse: 'Implicit fork — inherits full conversation context...',
+  tools: ['*'],          // ① 通配符：接收父代理的完整工具集
+  maxTurns: 200,
+  model: 'inherit',      // ② 继承父代理模型，保证缓存前缀一致性
+  permissionMode: 'bubble',  // ③ 权限冒泡到父终端
+  source: 'built-in',
+  baseDir: 'built-in',
+  getSystemPrompt: () => '',  // ④ 系统提示从父代理注入，不重建
+} satisfies BuiltInAgentDefinition</code></pre>
+          </div>
+          <div class="cache-diagram">
+父代理的对话历史:
+┌─────────────────────────────────────────────────────┐
+│ user: "请同时分析三个文件夹"                           │
+│ assistant: [tool_use: fork子代A] [tool_use: 子代B]   │ ← 完整保留
+│ user: [tool_result: PLACEHOLDER] [tool_result: PH]  │ ← 占位符，所有子代相同
+│       [text: "你负责分析 src/ 文件夹..."]              │ ← 每个子代唯一的指令
+└─────────────────────────────────────────────────────┘
+
+子代A API请求前缀:  ████████████████████████████│不同
+子代B API请求前缀:  ████████████████████████████│不同
+                   ←── 相同部分，命中 cache ──→</div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 享元模式（Flyweight Pattern）</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：Claude API 的 prompt cache 按请求前缀缓存。多个并发子代通过共享相同的历史前缀 + 占位符结果，只在最后的指令块上区别——就像多个快递员共享同一张地图，只有最后的目的地不同。大幅减少 API 成本和延迟。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：每个子代的请求前缀都不同，无法共享缓存，并发子代的 API 成本是 N 倍，延迟也无法利用缓存加速。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 递归保护 -->
+        <div id="code-recursive-protect" class="reveal">
+          <h3 class="content-h3">3.2 递归 Fork 保护</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/tools/AgentTool/forkSubagent.ts</code> L73-L88</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🛡️ 递归防护</span>
+            <span class="pattern-badge">🔍 历史消息标记</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/AgentTool/forkSubagent.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="7"><code class="language-typescript">export function isInForkChild(messages: MessageType[]): boolean {
+  return messages.some(m => {
+    if (m.type !== 'user') return false
+    const content = m.message.content
+    if (!Array.isArray(content)) return false
+    return content.some(
+      block =>
+        block.type === 'text' &&
+        block.text.includes(`&lt;${FORK_BOILERPLATE_TAG}&gt;`),  // ① 检测特殊标签
+    )
+  })
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 用历史消息代替上下文传参</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：用"历史消息中是否有特殊标签"来判断是否在 fork 子代中，比传递 <code>isInFork: boolean</code> 参数更简洁——消息历史本身就是最好的"执行上下文记录"。就像侦探看犯罪现场留下的痕迹，不需要嫌疑人自己招供。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 颜色管理 -->
+        <div id="code-color" class="reveal">
+          <h3 class="content-h3">3.3 代理颜色管理 — UI 可观测性的工程设计</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/tools/AgentTool/agentColorManager.ts</code></p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🎨 可观测性</span>
+            <span class="pattern-badge">📐 TypeScript satisfies</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/AgentTool/agentColorManager.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="1,6,9"><code class="language-typescript">export const AGENT_COLORS: readonly AgentColorName[] = [
+  'red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan',
+] as const  // ① 8种颜色，用于不同代理类型
+
+// 颜色名 → 主题色 的类型安全映射
+export const AGENT_COLOR_TO_THEME_COLOR = {
+  red:    'red_FOR_SUBAGENTS_ONLY',
+  blue:   'blue_FOR_SUBAGENTS_ONLY',
+  // ...
+} as const satisfies Record&lt;AgentColorName, keyof Theme&gt;
+// ② `satisfies` 关键字保证类型约束，同时保留更窄的字面量类型
+
+export function getAgentColor(agentType: string): keyof Theme | undefined {
+  if (agentType === 'general-purpose') {
+    return undefined  // ③ 通用代理不分配颜色（太常见，不需要区分）
+  }
+  const agentColorMap = getAgentColorMap()
+  const existingColor = agentColorMap.get(agentType)
+  if (existingColor && AGENT_COLORS.includes(existingColor)) {
+    return AGENT_COLOR_TO_THEME_COLOR[existingColor]
+  }
+  return undefined
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — <code>satisfies</code> 运算符的精妙运用</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>satisfies</code> 在 TypeScript 4.9 引入，它在保留字面量类型（而非扩宽为 string）的同时，验证对象符合指定接口。这使 <code>AGENT_COLOR_TO_THEME_COLOR.red</code> 的类型是 <code>'red_FOR_SUBAGENTS_ONLY'</code> 而不是 <code>string</code>，为后续使用提供更精确的类型推断。<code>_FOR_SUBAGENTS_ONLY</code> 后缀防止颜色被主题全局覆盖。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 内存作用域 -->
+        <div id="code-memory" class="reveal">
+          <h3 class="content-h3">3.4 代理内存的三种作用域</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/tools/AgentTool/agentMemory.ts</code> L52-L65</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/AgentTool/agentMemory.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="4,6,8"><code class="language-typescript">export function getAgentMemoryDir(
+  agentType: string,
+  scope: AgentMemoryScope,
+): string {
+  const dirName = sanitizeAgentTypeForPath(agentType)
+  switch (scope) {
+    case 'project':
+      return join(getCwd(), '.claude', 'agent-memory', dirName) + sep
+    case 'local':
+      return getLocalAgentMemoryDir(dirName)
+    case 'user':
+      return join(getMemoryBaseDir(), 'agent-memory', dirName) + sep
+  }
+}</code></pre>
+          </div>
+          <table class="arch-table" style="margin-top: var(--space-lg);">
+            <thead>
+              <tr><th>作用域</th><th>位置</th><th>适用场景</th><th>VCS 状态</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>user</code></td><td><code>~/.claude/agent-memory/</code></td><td>跨项目学习，通用知识</td><td>不入 VCS</td></tr>
+              <tr><td><code>project</code></td><td><code>.claude/agent-memory/</code></td><td>项目专属，团队共享</td><td>入 VCS</td></tr>
+              <tr><td><code>local</code></td><td><code>.claude/agent-memory-local/</code></td><td>本机特定，不共享</td><td>.gitignore</td></tr>
+            </tbody>
+          </table>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 内存作用域影响记忆策略</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：内存的作用域不仅影响存储位置，还影响代理"记忆什么内容"的策略——scope 注释被注入到内存提示中。就像你在家和在公司记笔记的侧重点不同：家里记的是私人事项，公司记的是团队协作信息。<code>sanitizeAgentTypeForPath</code> 处理了 <code>plugin:agent-name</code> 格式的跨平台路径安全（冒号在 Windows 禁止）。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 内置代理 -->
+        <div id="code-builtin" class="reveal">
+          <h3 class="content-h3">3.5 内置代理体系：工具白名单的精确控制</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/tools/AgentTool/built-in/exploreAgent.ts</code> L64-L82</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔐 最小权限原则</span>
+            <span class="pattern-badge">🏗️ 工程约束优于AI自律</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/AgentTool/built-in/exploreAgent.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="7,8,9,10,14"><code class="language-typescript">export const EXPLORE_AGENT: BuiltInAgentDefinition = {
+  agentType: 'Explore',
+  whenToUse: 'Fast agent specialized for exploring codebases...',
+  
+  // ① 精确工具黑名单（保证只读）
+  disallowedTools: [
+    AGENT_TOOL_NAME,          // 禁止 Fork 子代（防止递归扩散）
+    EXIT_PLAN_MODE_TOOL_NAME, // 禁止修改权限模式
+    FILE_EDIT_TOOL_NAME,      // ← 核心：禁止文件修改
+    FILE_WRITE_TOOL_NAME,     // ← 核心：禁止文件写入
+    NOTEBOOK_EDIT_TOOL_NAME,  // ← 核心：禁止 Notebook 编辑
+  ],
+  source: 'built-in',
+  baseDir: 'built-in',
+  
+  // ② 模型选择策略：内部 inherit（利用父缓存），外部 haiku（速度优先）
+  model: process.env.USER_TYPE === 'ant' ? 'inherit' : 'haiku',
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 工程约束优于 AI 自律</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：Explore 代理是"只读探索代理"，通过精确的 <code>disallowedTools</code> 黑名单，从架构上保证它不可能修改文件系统——这比"相信 AI 不会修改文件"要可靠得多。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：仅靠系统提示中的"只读模式"指令，AI 偶尔还是可能尝试修改文件；工具限制是硬约束，系统提示是软约束，两者结合才是真正的安全保障。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 工具过滤 -->
+        <div id="code-filter" class="reveal">
+          <h3 class="content-h3">3.6 工具过滤策略</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/tools/AgentTool/agentToolUtils.ts</code> L70-L116</p>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔐 分层访问控制</span>
+            <span class="pattern-badge">🚦 最小权限原则</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/AgentTool/agentToolUtils.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre data-highlight="6,9,11,14"><code class="language-typescript">export function filterToolsForAgent({ tools, isBuiltIn, isAsync = false, permissionMode }): Tools {
+  return tools.filter(tool => {
+    // MCP 工具对所有代理开放
+    if (tool.name.startsWith('mcp__')) return true
+    // plan 模式下的代理允许 ExitPlanMode（绕过黑名单）
+    if (toolMatchesName(tool, EXIT_PLAN_MODE_V2_TOOL_NAME) && permissionMode === 'plan') return true
+    // 全局代理禁用工具（安全基线）
+    if (ALL_AGENT_DISALLOWED_TOOLS.has(tool.name)) return false
+    // 自定义代理额外禁用工具（比内置代理限制更多）
+    if (!isBuiltIn && CUSTOM_AGENT_DISALLOWED_TOOLS.has(tool.name)) return false
+    // 异步代理只允许特定工具（后台任务场景的最小权限）
+    if (isAsync && !ASYNC_AGENT_ALLOWED_TOOLS.has(tool.name)) return false
+    return true
+  })
+}</code></pre>
+          </div>
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 最小权限原则的分层实现</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：工具过滤分四层：全局黑名单（所有代理都不能用的危险工具）→ 自定义代理黑名单（自定义比内置受更多限制）→ 异步代理白名单（后台任务只允许安全工具集）→ 场景例外（plan 模式、Swarm 模式的必要例外）。就像门禁系统：访客卡 &lt; 员工卡 &lt; 管理员卡。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 内置代理全景图 -->
+      <section class="content-section" id="builtin-agents">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">内置代理全景图</h2>
+        </div>
+        <div class="reveal">
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph LR
+    subgraph "通用类"
+        GP["general-purpose\n工具: *\n无工具限制"]
+    end
+    subgraph "专精类"
+        EX["Explore\n只读探索\n禁止: 写/编辑工具\n模型: haiku/inherit"]
+        PL["Plan\n规划制定\n仅只读工具\npermissionMode: plan"]
+        VR["Verification\n代码验证\n有限工具集\n需 GrowthBook 门"]
+    end
+    subgraph "辅助类"
+        CG["ClaudeCodeGuide\n新手引导\n仅非SDK环境"]
+        SL["StatuslineSetup\n状态栏配置\n特定工具集"]
+    end
+    subgraph "Fork 路径"
+        FK["fork\n继承父上下文\n工具: *（精确继承）\npermMode: bubble"]
+    end
+            </div>
+          </div>
+          <div class="callout callout-info" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>🎯</span> 核心设计哲学</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">每种代理类型都是"为特定任务优化的专用 AI"，通过<strong>工具限制、模型选择和系统提示</strong>三者的组合来实现能力的精确边界控制。不依赖 AI 的"自律"，而是通过工程约束来保证行为边界。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 快照三状态机 -->
+      <section class="content-section" id="snapshot">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">快照三状态机</h2>
+        </div>
+        <div class="reveal">
+          <p class="content-p">代理内存快照（<code>agentMemorySnapshot.ts</code>）实现了三状态机：</p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--border-subtle);">
+              <div style="font-family: var(--font-code); font-size: 12px; color: var(--accent-green); margin-bottom: var(--space-sm);">action: 'none'</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">无快照，不操作</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-family: var(--font-code); font-size: 12px; color: var(--accent-green); margin-bottom: var(--space-sm);">action: 'initialize'</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">有快照但无本地内存，从快照初始化</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-orange); grid-column: 1 / -1;">
+              <div style="font-family: var(--font-code); font-size: 12px; color: var(--accent-green); margin-bottom: var(--space-sm);">action: 'prompt-update'</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">有快照且有本地内存，提示更新——避免盲目覆盖用户的本地内存，同时提醒用户有可用的团队快照</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §6 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 06</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">6.1 驾驭工程视角</h3>
+          <p class="content-p"><code>AgentTool</code> 是 Claude Code 中最体现"驾驭工程"思想的模块——它把 AI 的递归自组织能力关在一个精确设计的笼子里：</p>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🔒 约束</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• 工具黑白名单从架构上划定每个代理的能力边界</li>
+                <li>• <code>isInForkChild</code> 通过历史消息检测防止代理指数爆炸式递归</li>
+                <li>• 三层访问控制形成纵深防御</li>
+              </ul>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">🚀 增强</div>
+              <ul style="font-size: var(--font-size-sm); color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px; list-style: none;">
+                <li>• Fork 机制让多个并发子代共享 prompt cache，大幅降低 API 成本</li>
+                <li>• 快照机制让团队的 AI 代理可以共享经验</li>
+                <li>• 颜色分配系统让多代理并发输出对人类保持可区分</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div id="harness-inspire" class="reveal">
+          <h3 class="content-h3">6.2 对大模型应用的启发</h3>
+          <div style="display: flex; flex-direction: column; gap: var(--space-md);">
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>1️⃣</span> 工程约束优于提示约束</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">要限制 AI 的行为边界，工具黑名单比系统提示更可靠。系统提示是"请求"，工具限制是"命令"。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>2️⃣</span> 设计消息格式来最大化缓存</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">并发 AI 调用时，提前规划请求前缀的结构，让尽可能多的部分可以共享缓存。这在大规模多代理系统中能节省大量成本。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>3️⃣</span> 递归 AI 调用必须有终止条件</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">任何允许 AI 调用 AI 的系统都必须有明确的递归深度限制或终止检测，否则指数爆炸风险是真实的。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>4️⃣</span> AI 的内存需要分层</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">用户级（个人经验）、项目级（团队共享）、本地级（机器特定）三层分离，是实际工程中必须考虑的设计维度。</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>5️⃣</span> 可观测性要从设计时就规划</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">颜色分配、agentId 追踪、权限拒绝记录——这些不是事后的调试工具，而是在设计多代理系统时就应该内置的可观测性基础设施。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §7 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 07</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：Fork 子代为什么要保留父代理的 <code>AgentTool</code> 工具定义（即使它不能使用 fork）？这对 prompt cache 有什么影响？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Fork 子代保留 AgentTool 工具定义是为了保证 API 请求中的工具列表与父代理完全相同，从而让请求前缀字节一致——这是 prompt cache 共享的前提。如果 Fork 子代移除了 AgentTool，工具列表不同，请求前缀就不同，多个并发子代无法共享同一个 cache 条目，缓存优化完全失效。通过 <code>isInForkChild</code> 检测来拒绝实际的 fork 行为（而非移除工具定义），是一个聪明的解耦——缓存优化和行为限制各自通过不同机制实现。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：代理内存的三种作用域（user/project/local）分别对应团队协作的哪种场景？如果团队里有多个项目，应该用哪个作用域存储"跨项目的最佳实践"？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：user 作用域对应"个人经验"（跨所有项目、不共享给团队），project 作用域对应"项目共识"（团队共享、随代码库版本化），local 作用域对应"机器特定配置"（本机路径、环境特有设置）。"跨项目的最佳实践"应存储在 user 作用域——因为它是个人的通用知识，适用于所有项目，但每个人的最佳实践可能不同（所以不放 project），也不是本机特有（所以不放 local）。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：<code>filterToolsForAgent</code> 中，为什么异步代理（<code>isAsync: true</code>）受到比同步代理更严格的工具限制？这背后有什么安全考量？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：异步代理在后台运行，用户无法实时监控其行为——这是关键的安全差异。同步代理的每一步用户都能看到并随时中断；异步代理则在"无监督"状态下执行。因此异步代理只能使用"安全工具集"（ASYNC_AGENT_ALLOWED_TOOLS），避免在用户无法干预的情况下执行破坏性操作。这是最小权限原则在"可监督性"维度的应用：监督程度越低，权限应越受限。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：Explore 代理的系统提示中使用大写的 <code>=== CRITICAL: READ-ONLY MODE ===</code>，这是必要的吗？仅靠 <code>disallowedTools</code> 不够吗？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>disallowedTools</code> 是硬约束，防止 AI 调用写入类工具；但 AI 在思考过程中仍可能产生"我想修改文件"的意图，并尝试用其他方式绕过（比如通过 Bash 命令间接修改）。大写的系统提示是软约束，在语义层面告知 AI 当前是只读模式，引导 AI 从一开始就不产生修改意图，而非等到工具调用时才被拒绝。两者结合的价值：硬约束保证安全底线，软约束提升 AI 的任务理解准确性，减少无效的"尝试写入→被拒绝"循环。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> Coordinator 模式</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/coordinator/coordinatorMode.ts</code>，理解多代理"协调者"模式的实现</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> Swarm 模式</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/utils/swarm/spawnInProcess.ts</code>，理解 in-process 多代理协作</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 异步任务系统</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/tasks/LocalAgentTask/LocalAgentTask.ts</code>，理解后台任务的完整生命周期</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🔁</span> 恢复机制</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>src/tools/AgentTool/resumeAgent.ts</code>，理解代理会话如何从中断恢复</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);"><code>AgentTool</code> 代表了 Claude Code 最前沿的架构设计：</p>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>递归代理</strong>：主代理调用子代理，形成任意深度的执行树</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>缓存工程</strong>：Fork 机制精心设计消息格式，最大化 prompt cache 共享</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>最小权限</strong>：工具白名单/黑名单从架构上保证代理能力边界</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>状态管理</strong>：三种内存作用域满足不同持久化需求</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="08.html" class="nav-prev">← 上一课：QueryEngine — AI 对话的心脏</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="10.html" class="nav-next">下一课：技能系统 →</a>
+      </nav>
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="08.html">← 第08课</a>
+        <a href="../index.html#phases">课程总览</a>
+        <a href="10.html">第10课 →</a>
+      </nav>
+      <p class="footer-copy">第09课 · 智能代理工具与多代理协作 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+</body>
+</html>

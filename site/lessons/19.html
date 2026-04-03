@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第19课：上下文管理与模型路由 | Claude Code 教程</title>
+  <meta name="description" content="深入解析 Claude Code 的多轮对话上下文构建、三道防线设计、七种继续路径、模型五级优先链与 Token 成本闭环。" />
+
+  <!-- highlight.js (本地) -->
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+
+  <!-- 全局样式 -->
+  <link rel="stylesheet" href="../css/style.css" />
+
+  <!-- highlight.js & Mermaid (本地, defer) -->
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    /* ── 课程页面专属布局 ─── */
+    .lesson-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0;
+      align-items: start;
+    }
+
+    /* ── 侧边栏目录 ─── */
+    .lesson-toc {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow-y: auto;
+      padding: var(--space-xl) var(--space-lg);
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-subtle) transparent;
+    }
+
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+
+    .toc-title {
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: var(--space-md);
+    }
+
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+
+    .toc-item a {
+      display: block;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid transparent;
+      transition: all var(--transition-fast);
+      line-height: 1.4;
+    }
+
+    .toc-item a:hover {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+    }
+
+    .toc-item.active a {
+      color: var(--accent-blue);
+      background: #eff6ff;
+      border-left-color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    .toc-item.sub a {
+      padding-left: 22px;
+      font-size: 12px;
+    }
+
+    /* ── 主内容区 ─── */
+    .lesson-main {
+      padding: var(--space-2xl) var(--space-2xl) var(--space-3xl);
+      min-width: 0;
+    }
+
+    /* ── 章节容器 ─── */
+    .content-section {
+      margin-bottom: var(--space-3xl);
+    }
+
+    .content-section:last-child { margin-bottom: 0; }
+
+    /* ── 架构层级表格 ─── */
+    .arch-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .arch-table th {
+      background: #eff6ff;
+      color: var(--accent-cyan);
+      font-weight: 700;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-code);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .arch-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+
+    .arch-table code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      background: #f0fdf4;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ── 层级对比表 ─── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: var(--space-lg) 0;
+      font-size: var(--font-size-sm);
+    }
+
+    .compare-table th {
+      background: var(--bg-secondary);
+      color: var(--text-heading);
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .compare-table td {
+      padding: 10px 16px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+
+    /* ── 代码注释解析表 ─── */
+    .code-anno-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+      margin-top: var(--space-md);
+    }
+
+    .code-anno-table th {
+      background: var(--bg-secondary);
+      color: var(--accent-cyan);
+      font-family: var(--font-code);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .code-anno-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      line-height: 1.6;
+    }
+
+    .code-anno-table td:first-child {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-orange);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    .code-anno-table td:nth-child(2) {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-green);
+      min-width: 200px;
+    }
+
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+
+    /* ── 学习目标清单 ─── */
+    .goal-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      line-height: 1.6;
+    }
+
+    .goal-item .goal-num {
+      font-family: var(--font-code);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-green);
+      min-width: 24px;
+      margin-top: 1px;
+    }
+
+    /* ── 课程导航按钮 ─── */
+    .lesson-nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      margin-top: var(--space-3xl);
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .nav-prev, .nav-next {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      transition: all var(--transition-normal);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+    }
+
+    .nav-prev:hover, .nav-next:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: #eff6ff;
+    }
+
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+
+    .nav-overview {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      transition: color var(--transition-fast);
+    }
+
+    .nav-overview:hover { color: var(--accent-blue); }
+
+    /* ── 设计点评 ─── */
+    blockquote.design-review {
+      border-left: 4px solid var(--accent-cyan);
+      background: #f0fdfa;
+      margin: var(--space-lg) 0;
+      padding: var(--space-md) var(--space-lg);
+      border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    }
+
+    blockquote.design-review p {
+      margin: 0 0 var(--space-sm);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    blockquote.design-review p:last-child { margin-bottom: 0; }
+
+    /* ── 思考题折叠 ─── */
+    details {
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-lg);
+      overflow: hidden;
+    }
+
+    details summary {
+      cursor: pointer;
+      padding: var(--space-md) var(--space-lg);
+      font-weight: 600;
+      color: var(--accent-blue);
+      background: #eff6ff;
+      user-select: none;
+      list-style: none;
+    }
+
+    details summary::-webkit-details-marker { display: none; }
+
+    details summary::before {
+      content: '▶ ';
+      font-size: 12px;
+      transition: transform 0.2s;
+    }
+
+    details[open] summary::before { content: '▼ '; }
+
+    details > *:not(summary) {
+      padding: var(--space-md) var(--space-lg);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    /* ── 节内容标题 ─── */
+    .content-h2 {
+      font-size: var(--font-size-xl);
+      font-weight: 800;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .content-h3 {
+      font-size: var(--font-size-lg);
+      font-weight: 700;
+      color: var(--text-heading);
+      margin-bottom: var(--space-md);
+      margin-top: var(--space-xl);
+    }
+
+    .content-p {
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: var(--space-md);
+    }
+
+    /* ── 响应式 ─── */
+    @media (max-width: 1024px) {
+      .lesson-layout { grid-template-columns: 1fr; }
+      .lesson-toc { display: none; }
+      .lesson-main { padding: var(--space-xl) var(--space-lg); }
+    }
+
+    @media (max-width: 768px) {
+      .lesson-main { padding: var(--space-lg); }
+    }
+
+    /* ── 内联 code ─── */
+    p code, li code, td code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      background: #f0f2f5;
+      color: #d73a49;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+
+    /* ── 进度条颜色 ─── */
+    #progress-bar { background: var(--gradient-accent); }
+  </style>
+</head>
+<body>
+
+<!-- 顶部进度条 -->
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     导航栏
+═══════════════════════════════════════════════════════════ -->
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </nav>
+
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     课程 Hero 区域
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-header">
+  <div class="container">
+    <!-- 面包屑 -->
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">专题篇 · 能力维度横切</span>
+      <span class="sep">/</span>
+      <span>第19课</span>
+    </nav>
+
+    <!-- 课程编号 + 标题 -->
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 19 · 专题篇</span>
+    </div>
+
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      上下文管理<br/>
+      <span class="gradient-text">与模型路由</span>
+    </h1>
+
+    <!-- 元数据 -->
+    <div class="lesson-meta">
+      <span class="tag tag-purple">专题篇 · 能力维度横切</span>
+      <span class="tag tag-orange">⏱ 建议 75 分钟</span>
+      <span class="tag tag-red">⭐⭐⭐⭐ 难度较高</span>
+      <span class="tag tag-green">上下文管理 · 模型路由 · 成本控制</span>
+    </div>
+
+    <!-- 学习目标 -->
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>描述 Claude Code 多轮对话上下文的构建方式，理解 <code>mutableMessages</code> 的生命周期</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>解释上下文窗口管理的三道防线：预警阈值、自动摘要压缩、阻塞拦截</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>分析 <code>query.ts</code> 中七种"continue"路径各自的触发时机与恢复策略</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>说明模型选择的五级优先链路，以及 <code>getRuntimeMainLoopModel</code> 如何在运行时动态切换</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>理解 Token 计数、成本累积与 USD 预算护栏的完整闭环</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     主体布局：侧边栏 + 内容
+═══════════════════════════════════════════════════════════ -->
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <!-- ── 侧边栏目录 ────────────────────── -->
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-context">1.1 上下文即状态</a></div>
+        <div class="toc-item sub"><a href="#concept-three-defense">1.2 三道防线</a></div>
+        <div class="toc-item sub"><a href="#concept-model-route">1.3 模型路由优先链</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-overview">2.1 上下文管理架构</a></div>
+        <div class="toc-item sub"><a href="#arch-autocompact">2.2 自动压缩设计哲学</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
+        <div class="toc-item sub"><a href="#code-qe">3.1 QueryEngine.ts</a></div>
+        <div class="toc-item sub"><a href="#code-query">3.2 query.ts 七种继续</a></div>
+        <div class="toc-item sub"><a href="#code-autocompact">3.3 autoCompact.ts</a></div>
+        <div class="toc-item sub"><a href="#code-model">3.4 model.ts 优先链</a></div>
+        <div class="toc-item sub"><a href="#code-cost">3.5 cost-tracker.ts</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item sub"><a href="#harness-view">4.1 Harness 视角</a></div>
+        <div class="toc-item sub"><a href="#harness-patterns">4.2 大模型应用启发</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <!-- ── 主内容区 ────────────────────────────────── -->
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- ══════════════════════════════════════
+           §1 核心概念
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <!-- 1.1 上下文即状态 -->
+        <div id="concept-context" class="reveal">
+          <h3 class="content-h3">1.1 上下文即状态</h3>
+          <p class="content-p">
+            在 Claude Code 里，"一次对话"对应一个 <code>QueryEngine</code> 实例。这个实例里有一个叫 <code>mutableMessages</code> 的数组——它是整个多轮对话的真正主角。每次你发消息、模型回复、工具执行，结果都追加进这个数组。它是<strong>持久的</strong>（跨多次 <code>submitMessage()</code>），是<strong>有序的</strong>（时间线完整），也是<strong>受保护的</strong>（不直接暴露给外部）。
+          </p>
+
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>类型</th>
+                <th>含义</th>
+                <th>示例</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>user</code></td>
+                <td>用户输入 / 工具结果</td>
+                <td>你发的问题、BashTool 的执行结果</td>
+              </tr>
+              <tr>
+                <td><code>assistant</code></td>
+                <td>模型回复</td>
+                <td>Claude 的文字 + 工具调用指令</td>
+              </tr>
+              <tr>
+                <td><code>system</code></td>
+                <td>内部控制信号</td>
+                <td>compact_boundary、api_error</td>
+              </tr>
+              <tr>
+                <td><code>progress</code></td>
+                <td>工具执行进度</td>
+                <td>子任务状态更新</td>
+              </tr>
+              <tr>
+                <td><code>attachment</code></td>
+                <td>注入附件</td>
+                <td>记忆文件、队列命令</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 1.2 三道防线 -->
+        <div id="concept-three-defense" class="reveal">
+          <h3 class="content-h3">1.2 上下文窗口的三道防线</h3>
+          <p class="content-p">
+            当 mutableMessages 越堆越多，Token 总量就越来越大。Claude Code 设计了三道防线：
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">上下文窗口使用量阈值</span>
+            </div>
+            <pre><code class="language-text">Token 用量
+100% ─── 阻塞拦截（PROMPT_TOO_LONG）─ 直接返回错误消息
+ 95% ─── 自动压缩阈值（autocompactThreshold）─ 触发摘要压缩
+ 85% ─── 预警（WARNING_THRESHOLD）─ UI 显示警告</code></pre>
+          </div>
+        </div>
+
+        <!-- 1.3 模型路由 -->
+        <div id="concept-model-route" class="reveal">
+          <h3 class="content-h3">1.3 模型路由优先链</h3>
+          <p class="content-p">
+            模型选择遵循严格的五级优先顺序：
+          </p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">模型选择优先链</span>
+            </div>
+            <pre><code class="language-text">1. 会话内 /model 命令（最高优先级）
+2. --model 启动参数
+3. ANTHROPIC_MODEL 环境变量
+4. settings.json 中保存的配置
+5. 订阅类型默认值（Max/Team Premium → Opus；其他 → Sonnet）</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §2 架构设计与设计思想
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <!-- 2.1 上下文管理架构 -->
+        <div id="arch-overview" class="reveal">
+          <h3 class="content-h3">2.1 上下文管理系统架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "QueryEngine（每次对话一个实例）"
+        QE_MSG["mutableMessages[]<br/>对话全量历史"]
+        QE_USAGE["totalUsage<br/>Token 累计"]
+        QE_BUDGET["maxBudgetUsd<br/>USD 预算上限"]
+    end
+
+    subgraph "query.ts 主循环"
+        SNIP["① HISTORY_SNIP<br/>快速片段裁剪"]
+        MC["② microCompact<br/>工具结果缓存压缩"]
+        COLLAPSE["③ contextCollapse<br/>历史折叠（实验）"]
+        AC["④ autoCompact<br/>全量摘要压缩"]
+        BLOCK["⑤ blockingLimit 检查<br/>超限直接拒绝"]
+        API["⑥ 调用 Claude API<br/>流式接收"]
+    end
+
+    subgraph "摘要压缩（compact.ts）"
+        FORK["Fork 一个子会话"]
+        SUMMARY["让模型写一份对话摘要"]
+        REPLACE["用摘要替换原始消息"]
+    end
+
+    subgraph "成本追踪"
+        COST["cost-tracker.ts<br/>按模型累计 Token + USD"]
+        HOOK["costHook.ts<br/>进程退出时写入配置"]
+    end
+
+    QE_MSG --> SNIP
+    SNIP --> MC
+    MC --> COLLAPSE
+    COLLAPSE --> AC
+    AC -->|"触发压缩"| FORK
+    FORK --> SUMMARY
+    SUMMARY --> REPLACE
+    REPLACE --> API
+    AC -->|"不触发"| BLOCK
+    BLOCK --> API
+    API -->|"message_stop"| QE_USAGE
+    QE_USAGE --> COST
+    COST --> HOOK
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 自动压缩设计哲学 -->
+        <div id="arch-autocompact" class="reveal">
+          <h3 class="content-h3">2.2 "自动压缩"的设计哲学：主动收缩而非被动拒绝</h3>
+          <p class="content-p">
+            传统 AI 应用遇到上下文溢出只有一个结局：报错，让用户自己重来。Claude Code 的做法更进一步——<strong>在溢出发生之前，主动把历史对话压缩成摘要</strong>，继续跑。
+          </p>
+
+          <p class="content-p">核心公式：</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">阈值计算公式</span>
+            </div>
+            <pre><code class="language-text">autocompactThreshold = contextWindow - 20,000（保留摘要输出空间） - 13,000（缓冲）</code></pre>
+          </div>
+
+          <p class="content-p">
+            当累计 Token 超过这个阈值，<code>autoCompact</code> 就会 fork 一个子会话，让模型读完历史对话，写一份精炼摘要，用摘要替换原始消息。对用户来说，对话没有中断——只是内存更精简了。
+          </p>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §3 关键源码深度走查
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 QueryEngine.ts -->
+        <div id="code-qe" class="reveal">
+          <h3 class="content-h3">3.1 QueryEngine.ts：一次对话一个对象，状态完全内聚</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/QueryEngine.ts</code> 第 184-207 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/QueryEngine.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export class QueryEngine {
+  private config: QueryEngineConfig
+  private mutableMessages: Message[]         // ① 对话历史（跨轮次持久）
+  private abortController: AbortController  // ② 中断控制器
+  private permissionDenials: SDKPermissionDenial[] // ③ 权限拒绝记录
+  private totalUsage: NonNullableUsage       // ④ 累计 Token 统计
+  private readFileState: FileStateCache      // ⑤ 文件读取缓存
+  private discoveredSkillNames = new Set&lt;string&gt;() // ⑥ 当前轮次发现的技能
+  private loadedNestedMemoryPaths = new Set&lt;string&gt;() // ⑦ 已加载的记忆路径
+
+  constructor(config: QueryEngineConfig) {
+    this.config = config
+    this.mutableMessages = config.initialMessages ?? []  // 支持会话恢复
+    this.abortController = config.abortController ?? createAbortController()
+    this.permissionDenials = []
+    this.readFileState = config.readFileCache
+    this.totalUsage = EMPTY_USAGE
+  }</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① <code>mutableMessages</code> 是跨轮次的——调用多次 <code>submitMessage()</code> 不会丢失历史，这正是多轮对话的根基。<br/>
+            ② <code>abortController</code> 可以从外部注入，用于协调器模式下统一控制多个并发会话的中断。<br/>
+            ③ <code>permissionDenials</code> 收集每次工具调用的拒绝记录，在最终 <code>result</code> 消息里一起上报。<br/>
+            ⑤ <code>readFileState</code> 是文件状态缓存——当同一个文件在多轮中被读取，不需要每次都重新从磁盘读。<br/>
+            ⑦ <code>loadedNestedMemoryPaths</code> 追踪跨轮次已加载的嵌套记忆文件，防止重复注入浪费 Token。
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 会话即对象（Session as Object）</strong></p>
+            <p><strong>好在哪里</strong>：所有状态（历史消息、Token 统计、文件缓存、记忆路径）都在一个对象里。不需要全局变量，不需要在函数间传来传去，不会因为某处忘记初始化而出 bug。就像你有一个旅行背包，所有东西都在里面——无论走到哪里，背包里的状态总是完整的。</p>
+            <p><strong>如果不这样做</strong>：把 <code>mutableMessages</code> 放全局变量，多用户场景下会互相污染；把 Token 统计拆散到各处，每次汇总都要到处找；把文件缓存另建一个全局 Map，生命周期就脱钩了。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.2 query.ts 七种继续路径 -->
+        <div id="code-query" class="reveal">
+          <h3 class="content-h3">3.2 query.ts：对话主循环的七种"继续"路径</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/query.ts</code> 第 268-280 行（State 类型定义）</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/query.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">type State = {
+  messages: Message[]              // 当前轮次的消息数组
+  toolUseContext: ToolUseContext    // 工具执行上下文
+  autoCompactTracking: AutoCompactTrackingState | undefined // ① 压缩状态追踪
+  maxOutputTokensRecoveryCount: number  // ② 输出限制恢复计数（最多3次）
+  hasAttemptedReactiveCompact: boolean  // ③ 是否已尝试过被动压缩
+  maxOutputTokensOverride: number | undefined // ④ 动态输出 Token 上限
+  pendingToolUseSummary: Promise&lt;ToolUseSummaryMessage | null&gt; | undefined // ⑤ 异步工具摘要
+  stopHookActive: boolean | undefined  // ⑥ 停止钩子是否活跃
+  turnCount: number               // 当前已进行的轮次数
+  transition: Continue | undefined // ⑦ 上一次循环的继续原因
+}</code></pre>
+          </div>
+
+          <p class="content-p">这个 <code>State</code> 结构是整个对话循环的"内存"。每种"继续"情况对应一种 <code>transition.reason</code>：</p>
+
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>继续原因（transition.reason）</th>
+                <th>触发场景</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>next_turn</code></td><td>正常工具调用完成，进入下一轮</td></tr>
+              <tr><td><code>max_output_tokens_recovery</code></td><td>模型触达输出 Token 上限，注入恢复提示</td></tr>
+              <tr><td><code>max_output_tokens_escalate</code></td><td>先尝试放大到 64K 输出再重试</td></tr>
+              <tr><td><code>reactive_compact_retry</code></td><td>被动压缩成功后重试</td></tr>
+              <tr><td><code>collapse_drain_retry</code></td><td>折叠恢复成功后重试</td></tr>
+              <tr><td><code>stop_hook_blocking</code></td><td>停止钩子注入阻断错误后重试</td></tr>
+              <tr><td><code>token_budget_continuation</code></td><td>Token 预算激励继续输出</td></tr>
+            </tbody>
+          </table>
+
+          <p class="content-p">
+            <strong>关键设计</strong>：所有 continue 路径都通过 <code>state = { ... }; continue</code> 的方式更新状态然后重新进入循环顶部，而不是递归调用——这避免了深层递归爆栈，也让状态转换一目了然。
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 状态机而非递归（State Machine vs. Recursion）</strong></p>
+            <p><strong>好在哪里</strong>：七种继续路径，每种都是 <code>state = next; continue</code>，逻辑清晰、扁平、可追溯。就像地铁换乘系统——不管你从哪条线过来，最终都回到同一个入口重新检票，状态完全透明。</p>
+            <p><strong>如果不这样做</strong>：如果用递归实现，七种路径的深度累积，遇到长任务（几十轮工具调用）就可能触发 JS 调用栈限制，而且每层都要保留完整的局部变量，内存开销是线性递增的。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.3 autoCompact.ts -->
+        <div id="code-autocompact" class="reveal">
+          <h3 class="content-h3">3.3 autoCompact.ts：阈值计算与触发决策</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/services/compact/autoCompact.ts</code> 第 32-91 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/services/compact/autoCompact.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 为摘要输出保留 Token 空间（基于 p99.99 观测值 17,387 tokens）
+const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
+
+export function getEffectiveContextWindowSize(model: string): number {
+  const reservedTokensForSummary = Math.min(
+    getMaxOutputTokensForModel(model),
+    MAX_OUTPUT_TOKENS_FOR_SUMMARY,
+  )
+  let contextWindow = getContextWindowForModel(model, getSdkBetas())
+
+  // 支持环境变量覆盖，方便压缩功能的测试
+  const autoCompactWindow = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW
+  if (autoCompactWindow) {
+    const parsed = parseInt(autoCompactWindow, 10)
+    if (!isNaN(parsed) && parsed &gt; 0) {
+      contextWindow = Math.min(contextWindow, parsed)
+    }
+  }
+
+  return contextWindow - reservedTokensForSummary  // ① 有效窗口 = 总窗口 - 摘要预留
+}
+
+export function getAutoCompactThreshold(model: string): number {
+  const effectiveContextWindow = getEffectiveContextWindowSize(model)
+  const autocompactThreshold = effectiveContextWindow - AUTOCOMPACT_BUFFER_TOKENS // ② 再减 13,000 缓冲
+  return autocompactThreshold
+}
+
+export function calculateTokenWarningState(tokenUsage: number, model: string) {
+  const effectiveContextWindow = getEffectiveContextWindowSize(model)
+  const autoCompactThreshold = getAutoCompactThreshold(model)
+  return {
+    percentLeft: 1 - tokenUsage / effectiveContextWindow,
+    isAboveWarningThreshold: tokenUsage &gt; effectiveContextWindow - WARNING_THRESHOLD_BUFFER_TOKENS, // ③ 预警
+    isAboveErrorThreshold: tokenUsage &gt; effectiveContextWindow - ERROR_THRESHOLD_BUFFER_TOKENS,    // ④ 错误级预警
+    isAboveAutoCompactThreshold: tokenUsage &gt; autoCompactThreshold,     // ⑤ 触发摘要压缩
+    isAtBlockingLimit: tokenUsage &gt;= effectiveContextWindow,            // ⑥ 完全阻塞
+  }
+}</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① 有效窗口 = 总上下文窗口 - 20,000（为摘要输出预留，基于 p99.99 实测值而非拍脑袋）<br/>
+            ② 压缩触发阈值 = 有效窗口 - 13,000（缓冲区，防止触发压缩后还没跑完一个 API 请求就超了）<br/>
+            ③ 预警 = 剩余 20,000 tokens 时触发，UI 显示黄色警告<br/>
+            ⑥ 阻塞 = 达到有效窗口时完全拒绝，返回 <code>PROMPT_TOO_LONG_ERROR_MESSAGE</code>
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 分层阈值设计（Layered Thresholds）</strong></p>
+            <p><strong>好在哪里</strong>：预警 → 自动压缩 → 阻塞，三个阈值层层递进，就像汽车的油量表有"低油量警告"、"紧急备用"和"熄火"三个阶段。用户先看到黄色警告，有机会手动处理；如果不处理，系统自动压缩一把继续跑；实在不行才彻底拦住。</p>
+            <p><strong>如果不这样做</strong>：只有一个硬限制——超过就报错。用户写了 30 分钟的复杂对话，突然"上下文太长"强行中断，体验极差，而且所有的中间状态都丢失了。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.4 model.ts -->
+        <div id="code-model" class="reveal">
+          <h3 class="content-h3">3.4 model.ts：模型选择的五级优先链</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/utils/model/model.ts</code> 第 61-99 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/utils/model/model.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 优先链第一关：读取用户指定的模型（可能是别名）
+export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
+  let specifiedModel: ModelSetting | undefined
+
+  const modelOverride = getMainLoopModelOverride()  // ① 会话内 /model 命令
+  if (modelOverride !== undefined) {
+    specifiedModel = modelOverride
+  } else {
+    const settings = getSettings_DEPRECATED() || {}
+    // ② --model 参数 ③ 环境变量 ④ 配置文件，按优先级取第一个非空值
+    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+  }
+
+  // 安全阀：如果指定模型不在允许列表，当作未指定
+  if (specifiedModel &amp;&amp; !isModelAllowed(specifiedModel)) {
+    return undefined
+  }
+
+  return specifiedModel
+}
+
+// ⑤ 最后的默认值：按订阅类型选模型
+export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+  if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
+    return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
+  }
+  // PAYG、Enterprise、Team Standard、Pro 用 Sonnet
+  return getDefaultSonnetModel()
+}
+
+// 运行时动态路由：在 plan 模式下可能切换模型
+export function getRuntimeMainLoopModel(params: {
+  permissionMode: PermissionMode
+  mainLoopModel: string
+  exceeds200kTokens?: boolean
+}): ModelName {
+  // opusplan 别名：plan 模式下自动升级到 Opus
+  if (
+    getUserSpecifiedModelSetting() === 'opusplan' &amp;&amp;
+    params.permissionMode === 'plan' &amp;&amp;
+    !params.exceeds200kTokens
+  ) {
+    return getDefaultOpusModel()
+  }
+  // haiku 用户进入 plan 模式时自动升级到 Sonnet（haiku 推理能力不足以规划）
+  if (getUserSpecifiedModelSetting() === 'haiku' &amp;&amp; params.permissionMode === 'plan') {
+    return getDefaultSonnetModel()
+  }
+  return params.mainLoopModel
+}</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① 会话内 <code>/model</code> 命令的优先级最高——这让用户可以在不中断对话的前提下切换模型。<br/>
+            安全阀：<code>isModelAllowed()</code> 防止用户指定一个不在白名单里的模型，避免 API 端异常。<br/>
+            <code>opusplan</code> 别名是一个智能路由——平时用 Sonnet（省钱），规划阶段用 Opus（更强推理），超过 200k tokens 时回退 Sonnet（Opus 1M 太贵）。
+          </p>
+
+          <blockquote class="design-review">
+            <p>💡 <strong>设计点评 — 别名路由（Alias Routing）</strong></p>
+            <p><strong>好在哪里</strong>：<code>opusplan</code> 这个别名很巧妙——用户不需要在不同阶段手动切换模型，系统根据 <code>permissionMode</code> 自动路由。就像打车软件根据你的订阅档次自动分配顺风车或专车，你只需要打开 APP，剩下的它来决定。</p>
+            <p><strong>如果不这样做</strong>：用户要么全程用 Opus（贵、快），要么全程用 Haiku（省、弱），要么每次手动 <code>/model</code>——体验割裂，而且大部分用户根本不知道什么时候该换模型。</p>
+          </blockquote>
+        </div>
+
+        <!-- 3.5 cost-tracker.ts -->
+        <div id="code-cost" class="reveal">
+          <h3 class="content-h3">3.5 cost-tracker.ts：Token 计数与成本闭环</h3>
+          <p class="content-p"><strong>文件</strong>：<code>src/cost-tracker.ts</code> 第 250-323 行</p>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="code-block-lang">TypeScript · src/cost-tracker.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function addToTotalSessionCost(
+  cost: number,
+  usage: Usage,   // Anthropic SDK 的 BetaUsage 类型（含缓存字段）
+  model: string,
+): number {
+  const modelUsage = addToTotalModelUsage(cost, usage, model)
+  addToTotalCostState(cost, modelUsage, model)  // ① 写入全局成本状态
+
+  const attrs = isFastModeEnabled() &amp;&amp; usage.speed === 'fast'
+    ? { model, speed: 'fast' }
+    : { model }
+
+  // ② OpenTelemetry 式指标上报（供 ANT 内部监控）
+  getCostCounter()?.add(cost, attrs)
+  getTokenCounter()?.add(usage.input_tokens, { ...attrs, type: 'input' })
+  getTokenCounter()?.add(usage.output_tokens, { ...attrs, type: 'output' })
+  getTokenCounter()?.add(usage.cache_read_input_tokens ?? 0, { ...attrs, type: 'cacheRead' })
+  getTokenCounter()?.add(usage.cache_creation_input_tokens ?? 0, { ...attrs, type: 'cacheCreation' })
+
+  let totalCost = cost
+  // ③ 处理 advisor 工具的嵌套成本（advisor 工具内部可能调用第二个模型）
+  for (const advisorUsage of getAdvisorUsage(usage)) {
+    const advisorCost = calculateUSDCost(advisorUsage.model, advisorUsage)
+    totalCost += addToTotalSessionCost(advisorCost, advisorUsage, advisorUsage.model)
+  }
+  return totalCost
+}</code></pre>
+          </div>
+
+          <p class="content-p">
+            ① 成本状态（<code>totalCostUSD</code>、<code>modelUsage</code> 等）存储在 <code>bootstrap/state.ts</code> 的全局单例中，进程内任何地方都能读取。<br/>
+            ② <code>CostCounter</code> / <code>TokenCounter</code> 是 OpenTelemetry 计数器的封装，在 ANT 内部环境下上报到监控系统，外部发布版本中为 no-op。<br/>
+            ③ <code>advisorUsage</code> 处理的是 advisor 工具内部调用的模型成本，这些成本需要递归累加到总计里。
+          </p>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §4 Harness Engineering
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div id="harness-view" class="reveal">
+          <h3 class="content-h3">4.1 Harness 视角</h3>
+          <p class="content-p">
+            Claude Code 的上下文管理是 Harness 设计中最值得借鉴的一环。作为一个"代码 AI 宿主"，它必须同时解决三个相互对抗的目标：
+          </p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🧠</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">记忆尽可能多</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">长任务需要完整上下文</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">💰</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">成本尽可能低</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">每个 Token 都要花钱</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">⭐</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">质量尽可能高</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">摘要压缩会丢失细节</div>
+            </div>
+            <div class="card" style="padding: var(--space-lg);">
+              <div style="font-size: 24px; margin-bottom: var(--space-sm);">🔄</div>
+              <div style="font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">渐进式降级</div>
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">多层级保留完整历史，轻量 microcompact，全量 autocompact</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="harness-patterns" class="reveal">
+          <h3 class="content-h3">4.2 大模型应用启发</h3>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📦</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">Pattern 1：对话生命周期对象化</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  把 <code>messages[]</code>、<code>usage</code>、<code>abortController</code>、<code>fileCache</code> 打包进一个类，而不是分散在全局状态里。每次会话 <code>new QueryEngine(config)</code>，清理时 <code>engine = null</code>，生命周期自动管理。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🛡️</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">Pattern 2：Token 预算护栏</h4>
+                <div class="code-block" style="margin: var(--space-sm) 0;">
+                  <pre><code class="language-typescript">// 设置 USD 预算上限（QueryEngine.ts）
+if (maxBudgetUsd !== undefined &amp;&amp; getTotalCost() &gt;= maxBudgetUsd) {
+  yield { type: 'result', subtype: 'error_max_budget_usd', ... }
+  return
+}</code></pre>
+                </div>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  在你自己的 AI Agent 里，可以参考同样的模式：每次 API 回包后检查累计成本，超过预算立即停止并上报。这是防止"Agent 失控烧钱"的最后一道闸。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🔌</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">Pattern 3：可插拔的压缩钩子</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">
+                  <code>QueryEngine</code> 接受一个 <code>snipReplay</code> 回调，这意味着压缩逻辑可以从外部注入。如果你在构建一个多模型对话框架，可以用同样的方式让调用方决定"达到什么条件时用什么策略压缩上下文"。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           §5 思考题与进阶
+      ══════════════════════════════════════ -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶</h2>
+        </div>
+
+        <div class="reveal">
+          <details>
+            <summary>💡 题目 1：<code>mutableMessages</code> 和传给 <code>query()</code> 的 <code>messages</code> 参数有什么区别？在 compact_boundary 之后，两者的处理逻辑为何不同？</summary>
+            <p>
+              <strong>参考答案</strong>：<code>mutableMessages</code> 是 <code>QueryEngine</code> 实例级别的完整历史，跨所有 <code>submitMessage()</code> 调用持久存在，用于会话恢复和 UI 滚动回看。传给 <code>query()</code> 的 <code>messages</code> 是在 <code>submitMessage()</code> 开始时拷贝的快照（<code>[...this.mutableMessages]</code>），之后在循环中追加新消息。当出现 <code>compact_boundary</code> 时，QueryEngine 对 <code>mutableMessages</code> 做了 <code>splice(0, boundaryIdx)</code>——只保留边界之后的消息——释放内存。但 UI 侧（REPL 模式）不做这个截断，保留完整历史供用户回滚查看，通过 <code>projectSnippedView</code> 函数在展示时按需"投影"。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 2：<code>max_output_tokens_recovery</code> 的恢复消息是 <code>isMeta: true</code> 的。这意味着什么？为什么不能让用户看到这条消息？</summary>
+            <p>
+              <strong>参考答案</strong>：<code>isMeta: true</code> 的消息是"系统注射"——它会进入对话历史（模型能看到），但在 UI 上被过滤掉，用户感知不到。这样做是为了无缝恢复：模型被告知"Token 打满了，继续从刚才截断的地方讲"，而用户界面上看起来模型的回复还在持续流式输出，没有任何中断提示。如果用户能看到这条消息，反而会产生困惑（"谁截断我了？"），破坏交互连贯性。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 3：<code>getRipgrepConfig</code> 使用了 <code>memoize</code>，而 <code>getRuntimeMainLoopModel</code> 没有。为什么它们对"是否缓存"的处理不一样？</summary>
+            <p>
+              <strong>参考答案</strong>：<code>getRipgrepConfig</code> 的输出只取决于启动时的二进制路径和环境变量，在进程生命周期内是静态的，适合用 <code>memoize</code> 永久缓存。<code>getRuntimeMainLoopModel</code> 则依赖 <code>permissionMode</code> 这个运行时可变状态——用户切换到 plan 模式时 <code>permissionMode</code> 变了，必须重新计算。如果对 <code>getRuntimeMainLoopModel</code> 做 memoize，就会导致 plan 模式的模型切换失效，<code>opusplan</code> 别名永远不会生效。缓存要慎用的核心原则：只缓存"对相同输入总是返回相同输出"的纯函数。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 4：QueryEngine 的 <code>maxBudgetUsd</code> 护栏是每次 <code>submitMessage()</code> 重置，还是跨轮次累计的？从代码上看，如何证明你的判断？</summary>
+            <p>
+              <strong>参考答案</strong>：<code>maxBudgetUsd</code> 是跨轮次累计的。<code>getTotalCost()</code> 调用的是 <code>bootstrap/state.ts</code> 里的全局成本状态，而 <code>QueryEngine.totalUsage</code>（实例级）只是 SDK 消息里 <code>usage</code> 字段的汇总，两者独立。每次 <code>submitMessage()</code> 开始时，没有任何代码重置 <code>totalCost</code>；<code>addToTotalSessionCost</code> 是累加操作（<code>+=</code>）。所以 <code>maxBudgetUsd</code> 是针对整个 <code>QueryEngine</code> 实例生命周期的累计护栏，适合用于"这个 Agent 任务总共只能花 $5"这样的场景。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 5：为什么 <code>autoCompact</code> 需要一个"连续失败计数器"以及上限 <code>MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3</code>？去掉这个计数器会发生什么？</summary>
+            <p>
+              <strong>参考答案</strong>：如果 autocompact 触发了，但摘要写得太长（超过允许的输出 Token），或者写摘要的过程本身失败，那下一轮进来 Token 还是很高，autocompact 会再次触发，再次失败——这就是"死亡螺旋"。代码注释里明确写到：BQ 数据显示曾有 1,279 个会话发生了 50 次以上的连续失败（最高 3,272 次），每天浪费约 25 万次 API 调用。连续 3 次失败后熔断，让 prompt_too_long 错误自然浮出，停止无效重试。这是典型的"幂等重试 + 熔断"模式在 AI 场景下的应用。
+            </p>
+          </details>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">
+              📌 本课小结
+            </h3>
+            <div class="grid-2" style="gap: var(--space-md);">
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>状态内聚</strong>：QueryEngine 把对话生命周期封装为对象，避免全局变量污染</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>分层阈值</strong>：三道防线让用户有机会自救，系统有能力自愈，最后才硬阻塞</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>状态机循环</strong>：七种 continue 路径扁平化，避免递归爆栈，状态一目了然</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>别名路由</strong>：opusplan 根据 permissionMode 自动切换模型，用户无感知</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 课程导航页脚 -->
+        <nav class="lesson-nav-footer" aria-label="课程导航">
+          <a href="18.html" class="nav-prev">
+            ← 第18课：协调器模式
+          </a>
+
+          <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+
+          <a href="20.html" class="nav-next">
+            下一课：复杂工程理解与资产提取 →
+          </a>
+        </nav>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     页脚
+═══════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="20.html">下一课 →</a>
+      </nav>
+
+      <p class="footer-copy">
+        第19课 · 上下文管理与模型路由 · © 2026 仅供学习研究
+      </p>
+    </div>
+  </div>
+</footer>
+
+<!-- 公共 JS -->
+<script src="../js/main.js"></script>
+
+<!-- 目录高亮 scrollspy -->
+<script>
+(function() {
+  'use strict';
+
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, {
+      rootMargin: '-80px 0px -60% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(s => observer.observe(s));
+  }
+
+  if (document.readyState !== 'loading') {
+    initTocSpy();
+  } else {
+    document.addEventListener('DOMContentLoaded', initTocSpy);
+  }
+})();
+</script>
+
+</body>
+</html>

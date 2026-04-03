@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第13课：主题系统与键盘快捷键 | Claude Code 教程</title>
+  <meta name="description" content="深入理解主题系统三层架构、auto 主题的 OSC 11 检测原理、ThemeProvider 预览-持久化生命周期，以及快捷键系统的分层架构与上下文优先级。" />
+
+  <link rel="stylesheet" href="../vendor/github.min.css" />
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="../vendor/highlight.min.js" defer></script>
+  <script src="../vendor/mermaid.min.js" defer></script>
+
+  <style>
+    .lesson-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; max-width: 1400px; margin: 0 auto; padding: 0; align-items: start; }
+    .lesson-toc { position: sticky; top: 76px; height: calc(100vh - 76px); overflow-y: auto; padding: var(--space-xl) var(--space-lg); border-right: 1px solid var(--border-subtle); background: var(--bg-secondary); scrollbar-width: thin; scrollbar-color: var(--border-subtle) transparent; }
+    .lesson-toc::-webkit-scrollbar { width: 4px; }
+    .lesson-toc::-webkit-scrollbar-track { background: transparent; }
+    .lesson-toc::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 2px; }
+    .toc-title { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-cyan); margin-bottom: var(--space-md); }
+    .toc-list { display: flex; flex-direction: column; gap: 2px; }
+    .toc-item a { display: block; padding: 6px 10px; font-size: 13px; color: var(--text-secondary); border-radius: var(--radius-sm); border-left: 2px solid transparent; transition: all var(--transition-fast); line-height: 1.4; }
+    .toc-item a:hover { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); }
+    .toc-item.active a { color: var(--accent-blue); background: #eff6ff; border-left-color: var(--accent-blue); font-weight: 600; }
+    .toc-item.sub a { padding-left: 22px; font-size: 12px; }
+    .lesson-main { padding: var(--space-2xl) var(--space-2xl) var(--space-3xl); min-width: 0; }
+    .content-section { margin-bottom: var(--space-3xl); }
+    .content-section:last-child { margin-bottom: 0; }
+    .arch-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .arch-table th { background: #eff6ff; color: var(--accent-cyan); font-weight: 700; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .arch-table td { padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+    .arch-table tr:last-child td { border-bottom: none; }
+    .arch-table tr:hover td { background: #f8fafc; }
+    .arch-table code { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); background: #f0fdf4; padding: 2px 6px; border-radius: 4px; }
+    .compare-table { width: 100%; border-collapse: collapse; margin: var(--space-lg) 0; font-size: var(--font-size-sm); }
+    .compare-table th { background: var(--bg-secondary); color: var(--text-heading); font-weight: 700; padding: 12px 16px; text-align: left; border: 1px solid var(--border-subtle); }
+    .compare-table td { padding: 10px 16px; border: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: top; line-height: 1.6; }
+    .compare-table tr:nth-child(even) td { background: var(--bg-secondary); }
+    .code-anno-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-md); }
+    .code-anno-table th { background: var(--bg-secondary); color: var(--accent-cyan); font-family: var(--font-code); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .code-anno-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; line-height: 1.6; }
+    .code-anno-table td:first-child { font-family: var(--font-code); font-size: 12px; color: var(--accent-orange); white-space: nowrap; min-width: 60px; }
+    .code-anno-table td:nth-child(2) { font-family: var(--font-code); font-size: 12px; color: var(--accent-green); min-width: 200px; }
+    .code-anno-table td:last-child { color: var(--text-secondary); }
+    .goal-list { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+    .goal-item { display: flex; align-items: flex-start; gap: var(--space-md); padding: var(--space-md) var(--space-lg); background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: var(--font-size-sm); line-height: 1.6; }
+    .goal-item .goal-num { font-family: var(--font-code); font-size: 11px; font-weight: 700; color: var(--accent-green); min-width: 24px; margin-top: 1px; }
+    .lesson-nav-footer { display: flex; justify-content: space-between; align-items: center; padding: var(--space-xl); border-top: 1px solid var(--border-subtle); margin-top: var(--space-3xl); gap: var(--space-md); flex-wrap: wrap; }
+    .nav-prev, .nav-next { display: flex; align-items: center; gap: var(--space-sm); padding: 10px 20px; border-radius: var(--radius-md); font-size: var(--font-size-sm); font-weight: 600; transition: all var(--transition-normal); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+    .nav-prev:hover, .nav-next:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: #eff6ff; }
+    .nav-next { background: #eff6ff; color: var(--accent-blue); }
+    .nav-overview { font-size: var(--font-size-sm); color: var(--text-secondary); transition: color var(--transition-fast); }
+    .nav-overview:hover { color: var(--accent-blue); }
+    #progress-bar { background: var(--gradient-accent); }
+    p code, li code, td code { font-family: var(--font-code); font-size: 12px; background: #f0f2f5; color: #d73a49; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); }
+    strong { color: var(--text-heading); }
+    em { color: var(--accent-cyan); font-style: normal; }
+    .content-h2 { font-size: var(--font-size-xl); font-weight: 800; color: var(--text-heading); letter-spacing: -0.02em; margin-bottom: var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
+    .content-h3 { font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md); margin-top: var(--space-xl); }
+    .content-p { color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md); }
+    .theme-preview { display: flex; gap: var(--space-sm); margin: var(--space-lg) 0; flex-wrap: wrap; }
+    .theme-chip { padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; font-family: var(--font-code); }
+    @media (max-width: 1024px) { .lesson-layout { grid-template-columns: 1fr; } .lesson-toc { display: none; } .lesson-main { padding: var(--space-xl) var(--space-lg); } }
+    @media (max-width: 768px) { .lesson-main { padding: var(--space-lg); } }
+  </style>
+</head>
+<body>
+
+<div id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+
+<header>
+  <nav class="navbar" role="navigation" aria-label="主导航">
+    <a href="../index.html" class="nav-brand">
+      <div class="brand-icon" aria-hidden="true">⚡</div>
+      <span>Claude Code 教程</span>
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html#phases">课程总览</a></li>
+      <li><a href="#concepts">核心概念</a></li>
+      <li><a href="#architecture">架构设计</a></li>
+      <li><a href="#sourcecode">源码走查</a></li>
+      <li><a href="#harness">Harness Engineering</a></li>
+    </ul>
+    <button class="nav-hamburger" aria-label="打开菜单" aria-expanded="false" aria-controls="nav-mobile-lesson">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <nav class="nav-mobile" id="nav-mobile-lesson" aria-label="移动端导航">
+    <a href="../index.html#phases">← 返回总览</a>
+    <a href="#concepts">核心概念</a>
+    <a href="#architecture">架构设计</a>
+    <a href="#sourcecode">源码走查</a>
+    <a href="#harness">Harness Engineering</a>
+    <a href="#quiz">思考题</a>
+  </nav>
+</header>
+
+<div class="lesson-header">
+  <div class="container">
+    <nav class="lesson-breadcrumb" aria-label="面包屑导航">
+      <a href="../index.html">Claude Code 教程</a>
+      <span class="sep">/</span>
+      <span class="tag tag-purple">第四阶段 · 深度架构解析</span>
+      <span class="sep">/</span>
+      <span>第13课</span>
+    </nav>
+    <div class="hero-eyebrow" style="animation: none;">
+      <span>📚</span>
+      <span>LESSON 13 · PHASE 04</span>
+    </div>
+    <h1 class="hero-title" style="animation: none; font-size: clamp(32px, 4vw, 52px);">
+      主题系统与<br/>
+      <span class="gradient-text">键盘快捷键</span>
+    </h1>
+    <div class="lesson-meta">
+      <span class="tag tag-purple">第四阶段 · 深度架构解析</span>
+      <span class="tag tag-orange">⏱ 建议 90～120 分钟</span>
+      <span class="tag tag-blue">前置：第12课 · 第11课</span>
+      <span class="tag tag-green">ThemeProvider · OSC 11 · Keybinding · Chord</span>
+    </div>
+    <div class="goal-list" style="max-width: 820px; margin-top: var(--space-xl);">
+      <div class="goal-item">
+        <span class="goal-num">01</span>
+        <span>理解主题系统的三层架构：主题令牌（Token）→ 主题名（ThemeName）→ 解析值（具体颜色）</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">02</span>
+        <span>掌握 <code>auto</code> 主题的实现原理——如何通过 OSC 11 查询终端背景色，并回退到 COLORFGBG</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">03</span>
+        <span>分析 ThemeProvider 的预览-持久化生命周期：预览、保存、取消的状态机</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">04</span>
+        <span>熟悉快捷键系统的分层架构：配置层 → 解析层 → 匹配层 → React 集成层</span>
+      </div>
+      <div class="goal-item">
+        <span class="goal-num">05</span>
+        <span>理解组合键（Chord）机制、上下文优先级和保留键的设计思想</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lesson-body" style="padding: 0; background: var(--bg-primary);">
+  <div class="lesson-layout">
+
+    <aside class="lesson-toc" aria-label="课程目录">
+      <div class="toc-title">课程目录</div>
+      <nav class="toc-list" aria-label="章节导航">
+        <div class="toc-item"><a href="#concepts">§1 核心概念</a></div>
+        <div class="toc-item sub"><a href="#concept-theme">1.1 主题系统三类概念</a></div>
+        <div class="toc-item sub"><a href="#concept-keybinding">1.2 快捷键系统分层</a></div>
+        <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
+        <div class="toc-item sub"><a href="#arch-theme">2.1 主题系统架构</a></div>
+        <div class="toc-item sub"><a href="#arch-keybinding">2.2 快捷键系统架构</a></div>
+        <div class="toc-item sub"><a href="#arch-semantic">2.3 语义化命名的价值</a></div>
+        <div class="toc-item sub"><a href="#arch-pure">2.4 纯函数解析的优势</a></div>
+        <div class="toc-item"><a href="#sourcecode">§3 源码走查</a></div>
+        <div class="toc-item sub"><a href="#code-tokens">3.1 主题令牌与 RGB 策略</a></div>
+        <div class="toc-item sub"><a href="#code-provider">3.2 ThemeProvider 三状态</a></div>
+        <div class="toc-item sub"><a href="#code-osc">3.3 OSC 11 + COLORFGBG</a></div>
+        <div class="toc-item sub"><a href="#code-parser">3.4 快捷键解析</a></div>
+        <div class="toc-item sub"><a href="#code-match">3.5 修饰键终端限制</a></div>
+        <div class="toc-item sub"><a href="#code-reserved">3.6 保留键三级约束</a></div>
+        <div class="toc-item sub"><a href="#code-defaults">3.7 默认绑定与平台适配</a></div>
+        <div class="toc-item"><a href="#harness">§4 Harness Engineering</a></div>
+        <div class="toc-item"><a href="#quiz">§5 思考题与进阶</a></div>
+      </nav>
+    </aside>
+
+    <main class="lesson-main" id="lesson-content">
+
+      <!-- §1 核心概念 -->
+      <section class="content-section" id="concepts">
+        <div class="reveal">
+          <p class="section-label">Section 01</p>
+          <h2 class="content-h2">核心概念</h2>
+        </div>
+
+        <div id="concept-theme" class="reveal">
+          <h3 class="content-h3">1.1 主题系统的三类概念</h3>
+          <div class="theme-preview">
+            <span class="theme-chip" style="background: #1a1a2e; color: #e2e8f0; border: 1px solid #3d3d5c;">dark</span>
+            <span class="theme-chip" style="background: #f5f5f5; color: #1e1e1e; border: 1px solid #d4d4d8;">light</span>
+            <span class="theme-chip" style="background: #1a1a2e; color: #e2e8f0; border: 1px solid #3d3d5c;">dark-daltonized</span>
+            <span class="theme-chip" style="background: #f5f5f5; color: #1e1e1e; border: 1px solid #d4d4d8;">light-daltonized</span>
+            <span class="theme-chip" style="background: #1a1a2e; color: #e2e8f0; border: 1px solid #3d3d5c;">dark-ansi</span>
+            <span class="theme-chip" style="background: #f5f5f5; color: #1e1e1e; border: 1px solid #d4d4d8;">light-ansi</span>
+            <span class="theme-chip" style="background: var(--gradient-accent); color: white;">auto</span>
+          </div>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>🎨</span> 三层主题解析链路</div>
+            <pre style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-md); font-size: 13px; overflow-x: auto; line-height: 2; margin-top: var(--space-sm);">ThemeSetting（用户偏好）
+  ├── 'auto'  ← 跟随系统/终端
+  ├── 'dark' / 'light' / 'dark-daltonized' / ...
+        ↓ resolve（'auto' → 具体名称）
+ThemeName（渲染用主题名，永不为 'auto'）
+  ├── 'dark' | 'light' | 'dark-daltonized' | ...
+        ↓ getTheme(name)
+Theme（颜色令牌对象）
+  ├── text: 'rgb(230,237,243)'
+  ├── background: '#1a1a2e'
+  ├── success: 'rgb(87,201,88)'
+  └── ... 80+ 个语义化颜色令牌</pre>
+          </div>
+        </div>
+
+        <div id="concept-keybinding" class="reveal">
+          <h3 class="content-h3">1.2 快捷键系统的分层</h3>
+          <table class="arch-table">
+            <thead><tr><th>层次</th><th>文件</th><th>职责</th></tr></thead>
+            <tbody>
+              <tr><td><span class="tag tag-blue">配置层</span></td><td><code>defaultBindings.ts</code> / <code>loadUserBindings.ts</code></td><td>内置默认绑定 + 用户配置文件</td></tr>
+              <tr><td><span class="tag tag-cyan">解析层</span></td><td><code>parser.ts</code> / <code>match.ts</code></td><td>"ctrl+shift+k" → ParsedKeystroke + 键盘事件比较</td></tr>
+              <tr><td><span class="tag tag-orange">路由层</span></td><td><code>resolver.ts</code></td><td>上下文过滤 + 优先级裁决 → action 字符串</td></tr>
+              <tr><td><span class="tag tag-green">集成层</span></td><td><code>KeybindingContext.tsx</code> / <code>useKeybinding.ts</code></td><td>React Context 提供绑定注册表 + 组件注册动作处理器</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- §2 架构设计 -->
+      <section class="content-section" id="architecture">
+        <div class="reveal">
+          <p class="section-label">Section 02</p>
+          <h2 class="content-h2">架构设计与设计思想</h2>
+        </div>
+
+        <div id="arch-theme" class="reveal">
+          <h3 class="content-h3">2.1 主题系统架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+graph TB
+    subgraph "存储层"
+        Config["全局配置<br/>~/.claude/config.json<br/>{ theme: 'dark' }"]
+        COLORFGBG["环境变量<br/>$COLORFGBG<br/>同步初始化"]
+        OSC11["OSC 11 查询<br/>终端背景色<br/>异步轮询"]
+    end
+    subgraph "提供者层"
+        Provider["ThemeProvider<br/>管理 themeSetting + previewTheme + systemTheme"]
+    end
+    subgraph "解析层"
+        ResolveAuto["auto → dark/light<br/>systemTheme.ts<br/>ITU-R BT.709 亮度判断"]
+        GetTheme["getTheme(name)<br/>theme.ts<br/>返回具体颜色令牌"]
+    end
+    subgraph "消费层"
+        ThemedText["ThemedText<br/>主题感知文本"]
+        Color["color()<br/>令牌→颜色值桥接"]
+    end
+    Config --> Provider
+    COLORFGBG --> ResolveAuto
+    OSC11 --> ResolveAuto
+    Provider --> ResolveAuto
+    ResolveAuto --> Provider
+    Provider --> GetTheme
+    GetTheme --> ThemedText
+    GetTheme --> Color
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-keybinding" class="reveal">
+          <h3 class="content-h3">2.2 快捷键系统架构</h3>
+          <div class="mermaid-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant User as 用户按键
+    participant Interceptor as ChordInterceptor（全局拦截）
+    participant Resolver as resolver.ts
+    participant Context as KeybindingContext
+    participant Handler as useKeybinding 处理器
+
+    User->>Interceptor: 键盘事件（input, key）
+    Interceptor->>Context: 查询当前活动上下文
+    Interceptor->>Resolver: resolveChord(input, key, activeContexts, bindings)
+    alt 完全匹配
+        Resolver-->>Interceptor: { type: 'match', action: 'chat:submit' }
+        Interceptor->>Handler: 调用注册的处理器
+        Interceptor->>Interceptor: stopPropagation（阻止后续处理）
+    else 组合键前缀（等待）
+        Resolver-->>Interceptor: { type: 'chord_started' }
+        Interceptor->>Interceptor: 保存等待状态，超时后取消
+    else 无匹配
+        Resolver-->>Interceptor: { type: 'none' }
+        Interceptor->>User: 放行给 Ink 的默认输入处理
+    end
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-semantic" class="reveal">
+          <h3 class="content-h3">2.3 为什么主题令牌使用语义化命名？</h3>
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--accent-blue); margin-bottom: var(--space-sm);">跨主题复用</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>diffAdded</code> 在暗色主题中是绿色，在亮色中是深绿，但组件代码不需要改变</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--accent-green); margin-bottom: var(--space-sm);">维护性</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">修改"所有成功状态颜色"只需改 <code>success</code> 令牌，一处修改全局生效</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-top: 3px solid var(--accent-purple);">
+              <div style="font-weight: 700; color: var(--accent-purple); margin-bottom: var(--space-sm);">色盲友好版本</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><code>dark-daltonized</code> 主题将红/绿区分替换为蓝/橙，组件代码无感知</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="arch-pure" class="reveal">
+          <h3 class="content-h3">2.4 为什么快捷键系统是纯函数解析？</h3>
+          <div class="callout callout-info">
+            <div class="callout-title"><span>🧮</span> 纯函数解析的三重好处</div>
+            <pre style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-md); font-size: 13px; overflow-x: auto; line-height: 2; margin-top: var(--space-sm);">resolver.ts 的 resolveKey 函数是纯函数：
+  - 输入：键盘事件 + 当前上下文 + 绑定列表
+  - 输出：匹配结果
+  - 无副作用，无外部状态依赖
+
+好处：
+  1. 单元测试极其简单（不需要 DOM、React 或 Ink）
+  2. 解析逻辑与 React 完全解耦，可在非 React 环境使用
+  3. 并发安全（无可变状态竞争）</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- §3 源码走查 -->
+      <section class="content-section" id="sourcecode">
+        <div class="reveal">
+          <p class="section-label">Section 03</p>
+          <h2 class="content-h2">关键源码深度走查</h2>
+        </div>
+
+        <!-- 3.1 主题令牌 -->
+        <div id="code-tokens" class="reveal">
+          <h3 class="content-h3">3.1 主题令牌定义与 RGB 颜色策略</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/theme.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export type Theme = {
+  // 基础颜色令牌
+  text: string          // 主文本
+  inverseText: string   // 反色文本
+  inactive: string      // 非活动状态
+  subtle: string        // 低调/辅助信息
+  background: string    // 背景色
+
+  // 语义状态
+  success: string
+  error: string
+  warning: string
+
+  // Diff 颜色族（含暗化版本用于上下文行）
+  diffAdded: string
+  diffRemoved: string
+  diffAddedDimmed: string     // diff 上下文中的新增行（不那么显眼）
+  diffRemovedDimmed: string
+  diffAddedWord: string       // 单词级 diff 高亮（新增）
+  diffRemovedWord: string
+
+  // Shimmer 变体（用于动画效果）
+  claude: string
+  claudeShimmer: string      // Claude 颜色的更浅版本，用于微光动画
+
+  // Agent 专用颜色（严格限制用途）
+  red_FOR_SUBAGENTS_ONLY: string
+  blue_FOR_SUBAGENTS_ONLY: string
+}
+
+/**
+ * 亮色主题：使用显式 RGB 值而非 ANSI 颜色名
+ * 原因：避免用户自定义终端 ANSI 颜色导致的显示不一致
+ */
+const lightTheme: Theme = {
+  text: 'rgb(30,30,30)',
+  background: 'rgb(245,245,245)',
+  claude: 'rgb(215,119,87)',
+  claudeShimmer: 'rgb(245,149,117)',
+  success: 'rgb(0,128,0)',
+  error: 'rgb(200,0,0)',
+  diffAdded: 'rgb(0,120,0)',
+  diffRemoved: 'rgb(160,0,0)',
+  // ...
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 语义化令牌 + RGB 锁色</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：你可以把这个设计想象成"品牌色规范书"——UI 设计师给你一本色卡说"错误用这个红、成功用这个绿"，不管你用什么显示器，颜色就是这个颜色。而不是说"用 terminal 的红色"——人家的红可能是粉色。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：不同终端（iTerm2 换肤后、Alacritty、kitty）里 Claude Code 的配色方案各不相同，用户截图分享时别人看到的是另一个样子，品牌感荡然无存。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.2 ThemeProvider -->
+        <div id="code-provider" class="reveal">
+          <h3 class="content-h3">3.2 ThemeProvider — 三状态主题机制</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/components/design-system/ThemeProvider.tsx</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">export function ThemeProvider({ children, initialState, onThemeSave }) {
+  // ① 持久化设置（存入全局配置）
+  const [themeSetting, setThemeSetting] = useState(initialState ?? defaultInitialTheme)
+
+  // ② 预览状态（仅在主题选择器打开期间有效）
+  const [previewTheme, setPreviewTheme] = useState&lt;ThemeSetting | null&gt;(null)
+
+  // ③ 系统主题（用于解析 'auto'）
+  //    初始值从 $COLORFGBG 同步读取（避免 OSC 异步等待造成闪烁）
+  const [systemTheme, setSystemTheme] = useState&lt;SystemTheme&gt;(() =>
+    (initialState ?? themeSetting) === 'auto' ? getSystemThemeName() : 'dark'
+  )
+
+  // 活跃设置：预览优先于持久化设置
+  const activeSetting = previewTheme ?? themeSetting
+
+  // 监听系统主题变化（仅在 'auto' 模式下）
+  useEffect(() => {
+    if (feature('AUTO_THEME')) {
+      if (activeSetting !== 'auto' || !internal_querier) return
+      // 动态导入：只在需要时加载 OSC 监听器，减少启动开销
+      let cancelled = false
+      void import('../../utils/systemThemeWatcher.js').then(({ watchSystemTheme }) => {
+        if (cancelled) return
+        const cleanup = watchSystemTheme(internal_querier, setSystemTheme)
+        return cleanup
+      })
+      return () => { cancelled = true }
+    }
+  }, [activeSetting, internal_querier])
+
+  // 解析最终渲染用主题名（永不为 'auto'）
+  const currentTheme: ThemeName = activeSetting === 'auto' ? systemTheme : activeSetting
+
+  const value = useMemo(() => ({
+    themeSetting,
+    setThemeSetting: (newSetting: ThemeSetting) => {
+      setThemeSetting(newSetting)
+      setPreviewTheme(null)
+      if (newSetting === 'auto') setSystemTheme(getSystemThemeName())
+      onThemeSave?.(newSetting)  // 写入全局配置
+    },
+    setPreviewTheme: (newSetting: ThemeSetting) => {
+      setPreviewTheme(newSetting)
+      if (newSetting === 'auto') setSystemTheme(getSystemThemeName())
+    },
+    savePreview: () => {
+      if (previewTheme !== null) {
+        setThemeSetting(previewTheme)
+        setPreviewTheme(null)
+        onThemeSave?.(previewTheme)
+      }
+    },
+    cancelPreview: () => { if (previewTheme !== null) setPreviewTheme(null) },
+    currentTheme,
+  }), [themeSetting, previewTheme, currentTheme, onThemeSave])
+
+  return &lt;ThemeContext.Provider value={value}&gt;{children}&lt;/ThemeContext.Provider&gt;
+}</code></pre>
+          </div>
+
+          <table class="arch-table" style="margin-top: var(--space-lg);">
+            <thead><tr><th>Hook</th><th>返回内容</th><th>适用场景</th></tr></thead>
+            <tbody>
+              <tr><td><code>useTheme()</code></td><td><code>currentTheme</code>（永不为 'auto'）</td><td>渲染组件：直接传给 <code>getTheme()</code></td></tr>
+              <tr><td><code>useThemeSetting()</code></td><td>用户存储的原始偏好</td><td>配置界面：需要显示"自动"选项</td></tr>
+              <tr><td><code>usePreviewTheme()</code></td><td><code>{ setPreviewTheme, savePreview, cancelPreview }</code></td><td>主题选择器：预览和保存/取消能力</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 预览-提交状态机</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：就像你在淘宝换购物车商品，所有改动先放进"购物车"，最后再统一结账（写入配置）。预览期间随便换，不满意直接取消，配置文件丝毫不动。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：每次预览主题都立刻写入配置文件，用户浏览了 10 个主题就写了 10 次磁盘，而且取消时还要"撤回"上一次写入，逻辑复杂且容易出错。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.3 OSC 11 -->
+        <div id="code-osc" class="reveal">
+          <h3 class="content-h3">3.3 系统主题检测 — OSC 11 + COLORFGBG 双路径</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/utils/systemTheme.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 模块级缓存：首次检测后直接返回
+let cachedSystemTheme: SystemTheme | undefined
+
+export function getSystemThemeName(): SystemTheme {
+  if (cachedSystemTheme === undefined) {
+    cachedSystemTheme = detectFromColorFgBg() ?? 'dark'
+  }
+  return cachedSystemTheme
+}
+
+/**
+ * 解析 OSC 颜色响应（OSC 11 查询终端背景色的返回格式）
+ * 支持两种格式：
+ * - rgb:RRRR/GGGG/BBBB（xterm、iTerm2、Ghostty、kitty 等）
+ * - #RRGGBB / #RRRRGGGGBBBB
+ */
+export function themeFromOscColor(data: string): SystemTheme | undefined {
+  const rgb = parseOscRgb(data)
+  if (!rgb) return undefined
+
+  // ITU-R BT.709 相对亮度公式
+  // 人眼感知亮度的标准加权公式（绿色感知最强，蓝色最弱）
+  const luminance = 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b
+  return luminance &gt; 0.5 ? 'light' : 'dark'
+}
+
+// $COLORFGBG 解析（同步，用于初始化）
+// 格式：fg;bg 或 fg;other;bg，取最后一部分
+function detectFromColorFgBg(): SystemTheme | undefined {
+  const colorfgbg = process.env['COLORFGBG']
+  if (!colorfgbg) return undefined
+  const parts = colorfgbg.split(';')
+  const bg = parts[parts.length - 1]
+  const bgNum = Number(bg)
+  if (!Number.isInteger(bgNum) || bgNum &lt; 0 || bgNum &gt; 15) return undefined
+  // ANSI 颜色 0-6 和 8 是深色，7 和 9-15 是浅色
+  return bgNum &lt;= 6 || bgNum === 8 ? 'dark' : 'light'
+}</code></pre>
+          </div>
+
+          <div class="callout callout-info" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>🔍</span> 双路径检测策略</div>
+            <pre style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-md); font-size: 13px; overflow-x: auto; line-height: 2; margin-top: var(--space-sm);">第一阶段（同步，启动时立即可用）：
+  读取 $COLORFGBG 环境变量
+  → 语义：fg;bg，bg 是 ANSI 颜色索引
+  → 优点：同步，零延迟
+  → 缺点：非标准，许多现代终端不设置
+
+第二阶段（异步，几百毫秒后生效）：
+  发送 OSC 11 查询到终端
+  → 标准 XTERM 协议，几乎所有现代终端支持
+  → 解析颜色 → 用 ITU-R BT.709 公式判断亮度
+  → 优点：准确（直接查询实际背景色）
+  → 缺点：异步，有延迟</pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 双路径 + ITU-R BT.709 亮度公式</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：用 <code>$COLORFGBG</code> 先快速猜一下（同步无延迟），再用 OSC 11 精确确认（异步）。就像进屋先拍一下电灯开关再四处找插座——先快速给个大概答案，再慢慢精确。而 ITU-R BT.709 系数（绿0.7152 > 红0.2126 > 蓝0.0722）对应人眼真实感知，不是随便凑的数字。
+            </p>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>如果不这样做</strong>：用简单的 <code>(R+G+B)/3</code> 判断亮度，你会把纯蓝背景判断成暗色（蓝色很暗但人眼感觉不是那么暗）。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.4 快捷键解析 -->
+        <div id="code-parser" class="reveal">
+          <h3 class="content-h3">3.4 快捷键解析 — 从字符串到结构化表示</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/keybindings/parser.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">/**
+ * 将 "ctrl+shift+k" 解析为 ParsedKeystroke 结构
+ * 支持多种修饰键别名（兼容不同平台的术语）
+ */
+export function parseKeystroke(input: string): ParsedKeystroke {
+  const parts = input.split('+')
+  const keystroke: ParsedKeystroke = {
+    key: '', ctrl: false, alt: false, shift: false, meta: false, super: false,
+  }
+
+  for (const part of parts) {
+    const lower = part.toLowerCase()
+    switch (lower) {
+      // Ctrl 别名
+      case 'ctrl': case 'control':
+        keystroke.ctrl = true; break
+
+      // Alt/Option 别名（macOS 用 option，Linux 用 alt，Emacs 用 meta）
+      case 'alt': case 'opt': case 'option':
+        keystroke.alt = true; break
+
+      // Super/Cmd/Win 别名
+      case 'cmd': case 'command': case 'super': case 'win':
+        keystroke.super = true; break
+
+      // 特殊键名规范化
+      case 'esc': keystroke.key = 'escape'; break
+      case 'return': keystroke.key = 'enter'; break
+      case 'space': keystroke.key = ' '; break
+
+      // Unicode 方向键符号（为方便手写配置而支持）
+      case '↑': keystroke.key = 'up'; break
+      case '↓': keystroke.key = 'down'; break
+      case '←': keystroke.key = 'left'; break
+      case '→': keystroke.key = 'right'; break
+
+      default: keystroke.key = lower; break
+    }
+  }
+
+  return keystroke
+}
+
+/**
+ * 解析组合键（Chord）：空格分隔的多步序列
+ * 例如："ctrl+x ctrl+k" → [ParsedKeystroke1, ParsedKeystroke2]
+ */
+export function parseChord(input: string): Chord {
+  return input.trim().split(/\s+/).map(parseKeystroke)
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 纯函数解析 + Unicode 箭头别名</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>parseKeystroke</code> 是个纯函数，输入字符串输出结构体，没有任何副作用。你在 Node REPL 里直接调用它测试就行，不需要启动 React、Ink 或模拟终端。同时支持 <code>↑↓←→</code> Unicode 箭头，键盘映射对不习惯英文键名的用户更直观。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.5 修饰键限制 -->
+        <div id="code-match" class="reveal">
+          <h3 class="content-h3">3.5 快捷键匹配 — 修饰键的终端限制</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/keybindings/match.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">/**
+ * 修饰键匹配：终端协议的限制与解决方案
+ *
+ * 关键限制：
+ * - Alt 和 Meta：在 Ink 中统一映射为 key.meta
+ *   （终端不能区分 Alt 和 Meta，历史遗留）
+ * - Super（Cmd/Win）：只在 Kitty 键盘协议终端中可用
+ *   （在标准 VT100 终端中永远不到达应用层）
+ */
+function modifiersMatch(inkMods: InkModifiers, target: ParsedKeystroke): boolean {
+  if (inkMods.ctrl !== target.ctrl) return false
+  if (inkMods.shift !== target.shift) return false
+
+  // Alt 和 meta 都映射到 key.meta（终端限制）
+  const targetNeedsMeta = target.alt || target.meta
+  if (inkMods.meta !== targetNeedsMeta) return false
+
+  // Super 只在 Kitty 协议终端中可达
+  if (inkMods.super !== target.super) return false
+
+  return true
+}
+
+// 特殊处理：Escape 键的 meta 标志
+// Ink 设置 key.meta=true 当 Escape 被按下（历史兼容问题）
+export function matchesKeystroke(input: string, key: Key, target: ParsedKeystroke): boolean {
+  const keyName = getKeyName(input, key)
+  if (keyName !== target.key) return false
+
+  const inkMods = getInkModifiers(key)
+
+  if (key.escape) {
+    // Escape 键：忽略 Ink 错误设置的 meta 标志
+    return inkMods.ctrl === target.ctrl && inkMods.shift === target.shift
+  }
+
+  return modifiersMatch(inkMods, target)
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 终端协议限制的显式建模</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：代码里直接注释了"终端不能区分 Alt 和 Meta（历史遗留）"、"Super 只在 Kitty 协议终端中可用"。这些不是 bug，是终端协议的物理限制，通过注释把约束固化在代码里，下一个维护者不会试图去"修复"这个"bug"。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.6 保留键 -->
+        <div id="code-reserved" class="reveal">
+          <h3 class="content-h3">3.6 保留键 — 三级约束体系</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/keybindings/reservedShortcuts.ts</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">/**
+ * 第一级：不可重绑（Claude Code 硬编码）
+ */
+export const NON_REBINDABLE: ReservedShortcut[] = [
+  { key: 'ctrl+c', reason: 'Cannot be rebound - used for interrupt/exit (hardcoded)', severity: 'error' },
+  { key: 'ctrl+d', reason: 'Cannot be rebound - used for exit (hardcoded)', severity: 'error' },
+  { key: 'ctrl+m', reason: 'Cannot be rebound - identical to Enter in terminals (both send CR)', severity: 'error' },
+]
+
+/**
+ * 第二级：终端保留（OS/终端拦截，通常到达不了应用）
+ * 允许用户尝试重绑，但会显示警告
+ */
+export const TERMINAL_RESERVED: ReservedShortcut[] = [
+  { key: 'ctrl+z', reason: 'Unix process suspend (SIGTSTP)', severity: 'warning' },
+  { key: 'ctrl+\\', reason: 'Terminal quit signal (SIGQUIT)', severity: 'error' },
+]
+
+/**
+ * 第三级：平台特定（macOS 系统级）
+ * cmd+c 等被 macOS 自身拦截，不会传到终端应用
+ */
+export const MACOS_RESERVED: ReservedShortcut[] = [
+  { key: 'cmd+c', reason: 'macOS system copy', severity: 'error' },
+  { key: 'cmd+v', reason: 'macOS system paste', severity: 'error' },
+  { key: 'cmd+q', reason: 'macOS quit application', severity: 'error' },
+]
+
+export function getReservedShortcuts(): ReservedShortcut[] {
+  const platform = getPlatform()
+  const reserved = [...NON_REBINDABLE, ...TERMINAL_RESERVED]
+  if (platform === 'macos') reserved.push(...MACOS_RESERVED)
+  return reserved
+}</code></pre>
+          </div>
+
+          <div class="callout callout-tip" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>💡</span> 设计点评 — 三级约束体系</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：把"不能绑"的原因分三层：Claude Code 自己硬编码的、终端/OS 拦截的、macOS 系统级的。就像门禁系统：有些门你公司没钥匙（NON_REBINDABLE），有些门物业管（TERMINAL_RESERVED），有些门是消防门（MACOS_RESERVED）。分清层次，提示信息才能说清楚"为什么不行"。
+            </p>
+          </div>
+        </div>
+
+        <!-- 3.7 默认绑定 -->
+        <div id="code-defaults" class="reveal">
+          <h3 class="content-h3">3.7 defaultBindings — 平台适配与功能开关</h3>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · src/keybindings/defaultBindings.ts（精选部分）</span>
+              <button class="code-copy-btn" aria-label="复制代码">复制</button>
+            </div>
+            <pre><code class="language-typescript">// 平台适配：图片粘贴快捷键
+// Windows: ctrl+v 是系统粘贴，不会传到应用；用 alt+v 代替
+const IMAGE_PASTE_KEY = getPlatform() === 'windows' ? 'alt+v' : 'ctrl+v'
+
+// Windows Terminal VT 模式检测
+const SUPPORTS_TERMINAL_VT_MODE =
+  getPlatform() !== 'windows' ||
+  (isRunningWithBun()
+    ? satisfies(process.versions.bun, '>=1.2.23')
+    : satisfies(process.versions.node, '>=22.17.0 &lt;23.0.0 || >=24.2.0'))
+
+const MODE_CYCLE_KEY = SUPPORTS_TERMINAL_VT_MODE ? 'shift+tab' : 'meta+m'
+
+export const DEFAULT_BINDINGS: KeybindingBlock[] = [
+  {
+    context: 'Global',
+    bindings: {
+      'ctrl+c': 'app:interrupt',
+      'ctrl+d': 'app:exit',
+      'ctrl+l': 'app:redraw',
+      'ctrl+r': 'history:search',
+
+      // 功能开关（feature flag 控制）
+      ...(feature('QUICK_SEARCH') ? {
+        'ctrl+shift+f': 'app:globalSearch' as const,
+        'cmd+shift+f': 'app:globalSearch' as const,  // Kitty 协议
+      } : {}),
+    },
+  },
+  {
+    context: 'Chat',
+    bindings: {
+      'escape': 'chat:cancel',
+      [MODE_CYCLE_KEY]: 'chat:cycleMode',   // 模式切换（平台适配）
+      'enter': 'chat:submit',
+      'ctrl+x ctrl+k': 'chat:killAgents',  // 组合键！
+      [IMAGE_PASTE_KEY]: 'chat:imagePaste',
+    },
+  },
+]</code></pre>
+          </div>
+
+          <div class="callout callout-info" style="margin-top: var(--space-lg);">
+            <div class="callout-title"><span>🚩</span> 功能开关（feature flag）的意义</div>
+            <pre style="background: var(--bg-secondary); border-radius: var(--radius-sm); padding: var(--space-md); font-size: 13px; overflow-x: auto; line-height: 2; margin-top: var(--space-sm);">feature('QUICK_SEARCH') → 布尔值
+  在构建时通过 bun:bundle 替换
+  外部构建（external）：false → 整块代码被 DCE（死代码消除）
+  内部构建（ant）：true → 功能可用
+
+优点：
+  1. 公开版本和内部版本共享代码库
+  2. 未启用的功能不占用键位（避免冲突）
+  3. 构建时消除，零运行时开销</pre>
+          </div>
+
+          <div class="callout callout-tip">
+            <div class="callout-title"><span>💡</span> 设计点评 — 构建时 feature flag + 平台适配</div>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: var(--space-sm); line-height: 1.8;">
+              <strong>好在哪里</strong>：<code>IMAGE_PASTE_KEY</code> 在 Windows 用 <code>alt+v</code>，在其他平台用 <code>ctrl+v</code>，这个判断写在代码里，不是靠文档说明。就像菜谱直接写"如果用电磁炉，火力调到中高；用燃气灶，用中火"——判断条件和做法都在一个地方。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- §4 Harness Engineering -->
+      <section class="content-section" id="harness">
+        <div class="reveal">
+          <p class="section-label">Section 04</p>
+          <h2 class="content-h2">Harness Engineering</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">🏗️ Harness Engineering 视角</h3>
+          <p class="content-p">本课的主题系统和快捷键系统，从驾驭工程的角度看，都体现了一个共同思想：<strong>把变化点和不变点分开，让不变的部分稳定、让变化的部分可替换</strong>。</p>
+
+          <div class="grid-2" style="gap: var(--space-md); margin: var(--space-lg) 0;">
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+              <div style="font-weight: 700; color: var(--accent-blue); margin-bottom: var(--space-sm);">语义令牌</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">语义令牌是不变的接口（<code>success</code>、<code>error</code>），具体颜色值是可替换的实现。你在上面叠主题变体，下面的组件代码一行不改。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-green);">
+              <div style="font-weight: 700; color: var(--accent-green); margin-bottom: var(--space-sm);">纯函数解析</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">把"解析字符串键名"这个不变的逻辑抽出来，与 React 生命周期解耦。想换 UI 框架？解析器不动。</p>
+            </div>
+            <div class="card" style="padding: var(--space-lg); border-left: 4px solid var(--accent-orange); grid-column: span 2;">
+              <div style="font-weight: 700; color: var(--accent-orange); margin-bottom: var(--space-sm);">上下文覆盖</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">让局部关注点（ThemePicker 的 <code>ctrl+t</code>）不污染全局关注点，组件卸载就自动清理，不留后患。这种"层次清晰、变化点隔离"的工程哲学，比任何设计模式的名字都重要。</p>
+            </div>
+          </div>
+
+          <h3 class="content-h3" style="margin-top: var(--space-2xl);">💡 对大模型应用的启发</h3>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-blue);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">📝</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">语义化而非直译</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">提示词里的变量名也该语义化——不是 <code>{var1}</code> 而是 <code>{user_intent}</code>、<code>{context_summary}</code>。模型理解语义，语义化命名让提示更健壮、更易维护。</p>
+              </div>
+            </div>
+          </div>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-green);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🛒</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">预览-提交模式</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">适用于任何"试错成本高"的场景：给模型 draft→review→commit 的工作流，在最终写入前保留撤销空间，和主题预览是同一个哲学。</p>
+              </div>
+            </div>
+          </div>
+          <div class="card reveal" style="margin-bottom: var(--space-lg); border-left: 4px solid var(--accent-orange);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-md);">
+              <div style="font-size: 32px; flex-shrink: 0;">🌊</div>
+              <div>
+                <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-sm);">双路径降级</h4>
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">大模型推理有时会超时或返回错误，用"先同步快路径、再异步精确路径"的两阶段思路，可以让用户感知到更快的响应，同时最终获得准确结果。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- §5 思考题 -->
+      <section class="content-section" id="quiz">
+        <div class="reveal">
+          <p class="section-label">Section 05</p>
+          <h2 class="content-h2">思考题与进阶方向</h2>
+        </div>
+
+        <div class="reveal">
+          <h3 class="content-h3">思考题</h3>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q1：主题扩展性——当前主题系统是"枚举式"的（dark/light/...），如果要支持完全自定义的用户主题（允许用户指定每个令牌的颜色），需要改动哪些模块？有什么潜在的挑战？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：主要改动三处：① <code>theme.ts</code> 中的 <code>ThemeSetting</code> 类型扩展为允许自定义对象；② <code>getTheme()</code> 需要支持传入自定义令牌并做验证（防止非法颜色值导致渲染崩溃）；③ 配置存储层（<code>~/.claude/config.json</code>）要能序列化/反序列化自定义主题对象。挑战在于 80+ 个令牌用户很难手动填全，需要提供"基于暗/亮模板扩展"的机制，同时色盲友好版本的令牌语义也需要用户理解才能正确配置。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q2：快捷键与 Vim 模式——Claude Code 支持 Vim 模式（<code>/vim</code> 命令）。在 Vim 模式下，<code>h/j/k/l</code> 会有特殊含义。快捷键系统如何处理"字符输入"与"快捷键动作"的冲突？（提示：看 <code>context</code> 的使用）</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：Vim 模式通过注册专属的上下文（如 <code>VimNormal</code>、<code>VimInsert</code>）来处理这个问题。在 VimNormal 上下文中，<code>h/j/k/l</code> 被绑定为导航动作，<code>resolver</code> 优先在当前活跃上下文中查找匹配，找到就触发动作并 stopPropagation，不会传递给 Ink 的默认字符输入处理器。切换到 VimInsert 时注销 VimNormal 上下文，<code>h/j/k/l</code> 就回归普通字符输入。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q3：动态模式下的上下文——打开帮助面板时活动上下文变为 <code>['Help', 'Global']</code>，如果用户按了 <code>q</code>（关闭帮助的快捷键），但 Chat 上下文也有 <code>q</code> 的绑定，优先级如何决定？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：<code>resolver.ts</code> 按照上下文注册顺序（后注册的上下文优先级更高）依次查找。帮助面板打开时，它会调用 <code>registerContext('Help')</code>，并且由于帮助面板是最后注册的，它的 <code>q</code> 绑定会优先于 Chat 的 <code>q</code>。帮助面板关闭后自动注销，<code>q</code> 就还给了 Chat 上下文处理。这是基于 React 组件生命周期的自动资源管理，无需手动维护优先级表。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion" data-group="quiz">
+            <div class="accordion-header" aria-expanded="false">
+              <span style="font-weight: 600; color: var(--text-primary);">Q4：主题的 Shimmer 动画——<code>claudeShimmer</code> 等 Shimmer 变体是如何在动画中使用的？能否用 CSS <code>animation</code> 类比理解这个机制，在终端中它是如何实现"微光扫描"效果的？</span>
+              <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="accordion-body">
+              <div class="accordion-content">
+                <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8;">
+                  <strong>💡 参考答案</strong>：终端没有 CSS 动画，只能通过定时器周期性重渲染来模拟动画。Spinner 组件每帧交替渲染主色和 Shimmer 色的字符，或在不同位置渲染亮色块来产生"扫光"感。把两个颜色预定义在主题里，动画组件直接读取 <code>theme.claude</code> 和 <code>theme.claudeShimmer</code> 即可，不需要每帧计算"亮一点的颜色是什么"——这既节省了 CPU 也保证了主题一致性。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <h3 class="content-h3">进阶阅读方向</h3>
+          <div class="grid-2" style="gap: var(--space-md);">
+            <div class="callout callout-info">
+              <div class="callout-title"><span>📖</span> 深入阅读</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>src/components/ThemePicker.tsx</strong> — 理解完整的主题选择界面实现，以及如何与 <code>usePreviewTheme</code> 配合实现实时预览</p>
+            </div>
+            <div class="callout callout-tip">
+              <div class="callout-title"><span>🔬</span> 扩展实践</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <strong>src/vim/</strong> 目录，理解 Vim 模式是如何通过上下文机制与快捷键系统集成的</p>
+            </div>
+            <div class="callout callout-idea">
+              <div class="callout-title"><span>🗺️</span> 架构探索</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <strong>src/keybindings/KeybindingProviderSetup.tsx</strong>，理解组合键等待状态是如何在 React state 中管理的</p>
+            </div>
+            <div class="callout callout-warning">
+              <div class="callout-title"><span>🛡️</span> 校验逻辑</div>
+              <p style="font-size: var(--font-size-sm); color: var(--text-secondary);">阅读 <strong>src/keybindings/validate.ts</strong>，理解用户配置的校验逻辑（如何检测保留键冲突、无效上下文/动作等）</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 小结 -->
+        <div class="reveal" style="margin-top: var(--space-xl);">
+          <div class="card" style="padding: var(--space-xl); background: linear-gradient(135deg, #eff6ff 0%, #ecfeff 100%); border-color: #bfdbfe;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700; color: var(--text-heading); margin-bottom: var(--space-md);">📌 本课小结</h3>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; margin-bottom: var(--space-md);">主题系统和快捷键系统都体现了 Claude Code 的<strong>可扩展性设计哲学</strong>：</p>
+            <table class="arch-table" style="margin: 0;">
+              <thead><tr><th>维度</th><th>主题系统</th><th>快捷键系统</th></tr></thead>
+              <tbody>
+                <tr><td>核心抽象</td><td>语义令牌 → 具体颜色</td><td>字符串键名 → 结构化动作</td></tr>
+                <tr><td>用户定制</td><td>选择预置主题</td><td>覆盖/新增键绑定</td></tr>
+                <tr><td>平台适配</td><td>ANSI vs RGB vs 自动检测</td><td>Windows VT 模式/macOS Super 键</td></tr>
+                <tr><td>预览机制</td><td>预览-提交状态机</td><td>上下文注册/注销</td></tr>
+                <tr><td>可测试性</td><td>纯函数颜色解析</td><td>纯函数键名解析和匹配</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <nav class="lesson-nav-footer" aria-label="课程导航">
+          <a href="12.html" class="nav-prev">← 上一课：React + Ink 终端 UI</a>
+          <a href="../index.html#phases" class="nav-overview">📋 返回课程总览</a>
+          <a href="14.html" class="nav-next">下一课：第14课 →</a>
+        </nav>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<footer class="footer" role="contentinfo">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="brand-icon" style="width:28px; height:28px; border-radius:6px; background: var(--gradient-accent); display:flex; align-items:center; justify-content:center; font-size:14px;" aria-hidden="true">⚡</div>
+        <span>Claude Code 源码学习系列</span>
+      </div>
+      <nav class="footer-links" aria-label="页脚导航">
+        <a href="../index.html#phases">课程总览</a>
+        <a href="12.html">← 上一课</a>
+      </nav>
+      <p class="footer-copy">第13课 · 主题系统与键盘快捷键 · © 2026 仅供学习研究</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+(function() {
+  'use strict';
+  function initTocSpy() {
+    const tocItems = document.querySelectorAll('.toc-item');
+    const sections = document.querySelectorAll('section[id], div[id]');
+    if (!tocItems.length || !sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          tocItems.forEach(item => {
+            const link = item.querySelector('a');
+            if (link && link.getAttribute('href') === '#' + id) {
+              tocItems.forEach(i => i.classList.remove('active'));
+              item.classList.add('active');
+            }
+          });
+        }
+      });
+    }, { rootMargin: '-80px 0px -60% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+  if (document.readyState !== 'loading') { initTocSpy(); }
+  else { document.addEventListener('DOMContentLoaded', initTocSpy); }
+})();
+</script>
+
+</body>
+</html>
