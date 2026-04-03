@@ -990,6 +990,20 @@ ul, ol { list-style: none; }
   color: #1d4ed8;
 }
 
+a.path-lesson-tag {
+  text-decoration: none;
+  color: #1d4ed8;
+  display: inline-block;
+  transition: background-color 0.2s, transform 0.2s, border-color 0.2s;
+}
+
+a.path-lesson-tag:hover {
+  background-color: var(--accent-primary, #2563eb);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+}
+
 .path-meta {
   display: flex;
   align-items: center;
