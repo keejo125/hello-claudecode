@@ -6,6 +6,23 @@
 'use strict';
 
 /* =====================================================================
+   0. Polyfills - 浏览器兼容性支持
+   ===================================================================== */
+
+// structuredClone polyfill for older browsers (Edge < 98, etc.)
+if (typeof structuredClone === 'undefined') {
+  window.structuredClone = function(obj) {
+    // 使用 JSON 序列化作为 fallback（不支持循环引用、函数、undefined 等）
+    try {
+      return JSON.parse(JSON.stringify(obj));
+    } catch (e) {
+      console.warn('structuredClone polyfill failed, returning original object:', e);
+      return obj;
+    }
+  };
+}
+
+/* =====================================================================
    1. 工具函数
    ===================================================================== */
 
@@ -409,42 +426,51 @@ function initSmoothScroll() {
 }
 
 /* =====================================================================
-   9. Mermaid.js 初始化（亮色主题）
+   9. Mermaid.js 初始化（亮色主题）- v9.x 兼容版本
    ===================================================================== */
 function initMermaid() {
-  if (typeof mermaid === 'undefined') return;
+  if (typeof mermaid === 'undefined') {
+    console.warn('Mermaid library not loaded');
+    return;
+  }
 
-  mermaid.initialize({
-    startOnLoad: true,
-    theme: 'default',
-    themeVariables: {
-      background:          '#ffffff',
-      primaryColor:        '#eff6ff',
-      primaryTextColor:    '#1a1a2e',
-      primaryBorderColor:  '#2563eb',
-      lineColor:           '#2563eb',
-      secondaryColor:      '#f8f9fa',
-      tertiaryColor:       '#f0f2f5',
-      edgeLabelBackground: '#ffffff',
-      clusterBkg:          '#f8f9fa',
-      titleColor:          '#0f172a',
-      nodeTextColor:       '#1a1a2e',
-      fontSize:            '14px',
-      fontFamily:          "'Inter', 'PingFang SC', system-ui, sans-serif",
-    },
-    flowchart: {
-      curve: 'basis',
-      padding: 20,
-    },
-    sequence: {
-      diagramMarginX: 50,
-      diagramMarginY: 30,
-      actorMargin: 80,
-      boxTextMargin: 5,
-      noteMargin: 10,
-      messageMargin: 35,
-    },
-  });
+  try {
+    // Mermaid v9.x 使用 startOnLoad: true 自动渲染
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      themeVariables: {
+        background:          '#ffffff',
+        primaryColor:        '#eff6ff',
+        primaryTextColor:    '#1a1a2e',
+        primaryBorderColor:  '#2563eb',
+        lineColor:           '#2563eb',
+        secondaryColor:      '#f8f9fa',
+        tertiaryColor:       '#f0f2f5',
+        edgeLabelBackground: '#ffffff',
+        clusterBkg:          '#f8f9fa',
+        titleColor:          '#0f172a',
+        nodeTextColor:       '#1a1a2e',
+        fontSize:            '14px',
+        fontFamily:          "'Inter', 'PingFang SC', system-ui, sans-serif",
+      },
+      flowchart: {
+        curve: 'basis',
+        padding: 20,
+      },
+      sequence: {
+        diagramMarginX: 50,
+        diagramMarginY: 30,
+        actorMargin: 80,
+        boxTextMargin: 5,
+        noteMargin: 10,
+        messageMargin: 35,
+      },
+      securityLevel: 'loose', // 允许 HTML 标签
+    });
+  } catch (err) {
+    console.error('Mermaid initialization error:', err);
+  }
 }
 
 /* =====================================================================
@@ -635,11 +661,16 @@ window.ClawCode = {
   },
 
   /**
-   * 重新渲染 Mermaid 图表
+   * 重新渲染 Mermaid 图表（v9.x 兼容）
    */
   renderMermaid() {
     if (typeof mermaid !== 'undefined') {
-      mermaid.run();
+      try {
+        // v9.x 使用 init 方法重新渲染
+        mermaid.init();
+      } catch (err) {
+        console.error('Mermaid render error:', err);
+      }
     }
   },
 };
