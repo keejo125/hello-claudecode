@@ -180,7 +180,7 @@
 
     <div class="lesson-meta">
       <span class="tag tag-purple">专题篇 · 能力维度横切</span>
-      <span class="tag tag-orange">⏱ 建议 75 分钟</span>
+      <span class="tag tag-orange">⏱ 建议 90 分钟</span>
       <span class="tag tag-red">⭐⭐⭐⭐ 难度较高</span>
       <span class="tag tag-green">memdir · 语义筛选 · 后台提取</span>
     </div>
@@ -206,6 +206,10 @@
         <span class="goal-num">05</span>
         <span>理解记忆如何在会话开始时注入 System Prompt，以及 MEMORY.md 截断阈值的设计意图</span>
       </div>
+      <div class="goal-item">
+        <span class="goal-num">06</span>
+        <span>掌握 <code>auto-dream</code> 定期记忆整理机制：触发条件、四阶段工作流、锁文件设计</span>
+      </div>
     </div>
   </div>
 </div>
@@ -223,6 +227,7 @@
         <div class="toc-item"><a href="#architecture">§2 架构设计</a></div>
         <div class="toc-item sub"><a href="#arch-overview">2.1 记忆系统整体架构</a></div>
         <div class="toc-item sub"><a href="#arch-mutex">2.2 主代理优先互斥设计</a></div>
+        <div class="toc-item sub"><a href="#arch-autodream">2.3 Auto-Dream 定期整理与压缩</a></div>
         <div class="toc-item"><a href="#sourcecode">§3 源码深度走查</a></div>
         <div class="toc-item sub"><a href="#code-memdir">3.1 MEMORY.md 截断与安全阈值</a></div>
         <div class="toc-item sub"><a href="#code-relevant">3.2 Sonnet 辅助语义筛选</a></div>
@@ -338,7 +343,9 @@ type: feedback
            ↓
 对话进行中 → findRelevantMemories() 前缀搜索 → 相关主题文件作为附件注入
            ↓
-每轮结束 → extractMemories 后台代理 → 分析对话提取新记忆 → 写主题文件 + 更新 MEMORY.md 索引</code></pre>
+每轮结束 → extractMemories 后台代理 → 分析对话提取新记忆 → 写主题文件 + 更新 MEMORY.md 索引
+           ↓
+定期触发 → auto-dream 梦境任务 → 深度整理和压缩记忆 → 修剪过时内容 + 优化索引</code></pre>
           </div>
         </div>
       </section>
@@ -393,8 +400,200 @@ graph TB
             如果用户明确要求 Claude 记住某件事，Claude 会<strong>直接写记忆文件</strong>。这时后台 <code>extractMemories</code> 代理就应该跳过，不然两个代理可能同时写同一个文件，产生内容冲突。
           </p>
           <p class="content-p">
-            代码里的解法是：在每次提取前，检查从上次游标开始的消息里，主代理是否已经调用了 Write/Edit 工具操作记忆目录内的文件。如果有，就跳过本次提取并推进游标，让主代理的写入"生效"。
+            代码里的解法是：在每次提取前，检查从上次游标开始的消息里，主代理是否已经调用了 Write/Edit 工具操作记忆目录内的文件。如果有，就跳过本次提取并推进游标，让主代理的写入“生效”。
           </p>
+        </div>
+
+        <!-- 2.3 Auto-Dream -->
+        <div id="arch-autodream" class="reveal">
+          <h3 class="content-h3">2.3 Auto-Dream：定期记忆整理与压缩</h3>
+          <p class="content-p">
+            除了每轮对话结束后的即时记忆提取（<code>extractMemories</code>），Claude Code 还有一个<strong>后台定期运行的记忆整理系统</strong>——<code>auto-dream</code>（自动梦境）。
+          </p>
+
+          <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin: var(--space-lg) 0 var(--space-sm);">2.3.1 为什么需要 Dream？</h4>
+          <p class="content-p"><code>extractMemories</code> 解决了“增量写入”的问题，但随着时间推移会产生新的问题：</p>
+          <ul style="margin: var(--space-md) 0; padding-left: var(--space-xl); line-height: 1.8; color: var(--text-secondary);">
+            <li><strong>记忆碎片化</strong>：多次对话可能为同一主题创建多个相似的记忆文件</li>
+            <li><strong>信息过时</strong>：项目状态变化后，旧记忆可能与当前代码库矛盾</li>
+            <li><strong>索引膨胀</strong>：MEMORY.md 不断追加条目，最终超过 200 行阈值被截断</li>
+            <li><strong>相对日期失效</strong>：“昨天修复的 bug”在一个月后变得不可理解</li>
+          </ul>
+          <p class="content-p">Dream 就是为解决这些问题而设计的<strong>批处理式记忆优化器</strong>。</p>
+
+          <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin: var(--space-lg) 0 var(--space-sm);">2.3.2 触发条件（三层门控）</h4>
+          <p class="content-p">Dream 不是每轮都运行，而是通过三层门控决定是否触发：</p>
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">TypeScript · 三层门控</span>
+            </div>
+            <pre><code class="language-typescript">// 第一层：时间门控（最便宜）
+距离上次整理 >= minHours（默认 24 小时）
+
+// 第二层：会话数量门控
+自上次整理以来的会话数 >= minSessions（默认 5 个会话）
+
+// 第三层：互斥锁
+没有其他进程正在执行 dream（防止并发冲突）</code></pre>
+          </div>
+          <p class="content-p">这种“层层过滤”的设计确保只有真正需要整理时才启动子代理，节省 token 成本。</p>
+
+          <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin: var(--space-lg) 0 var(--space-sm);">2.3.3 Dream 的四阶段工作流</h4>
+          <p class="content-p">Dream 是一个 forked agent（派生子代理），它的 prompt 定义了四个阶段：</p>
+          
+          <div class="card" style="padding: var(--space-lg); background: #f0fdf4; border-color: #bbf7d0; margin: var(--space-md) 0;">
+            <p style="margin-bottom: var(--space-sm);"><strong>Phase 1 - Orient（定向）</strong></p>
+            <ul style="margin: 0; padding-left: var(--space-xl); line-height: 1.7; color: var(--text-secondary); font-size: var(--font-size-sm);">
+              <li><code>ls</code> 记忆目录，了解现有文件结构</li>
+              <li>读取 <code>MEMORY.md</code> 索引，掌握当前记忆全景</li>
+              <li>快速浏览现有主题文件，避免创建重复内容</li>
+            </ul>
+          </div>
+
+          <div class="card" style="padding: var(--space-lg); background: #eff6ff; border-color: #bfdbfe; margin: var(--space-md) 0;">
+            <p style="margin-bottom: var(--space-sm);"><strong>Phase 2 - Gather（收集信号）</strong></p>
+            <ul style="margin: 0; padding-left: var(--space-xl); line-height: 1.7; color: var(--text-secondary); font-size: var(--font-size-sm);">
+              <li>优先查看日志文件（<code>logs/YYYY/MM/YYYY-MM-DD.md</code>）——这些是追加式的对话流</li>
+              <li>识别已漂移的记忆（与当前代码库矛盾的事实）</li>
+              <li>按需 grep 会话记录（JSONL 文件），不全文读取</li>
+            </ul>
+          </div>
+
+          <div class="card" style="padding: var(--space-lg); background: #fef3c7; border-color: #fde68a; margin: var(--space-md) 0;">
+            <p style="margin-bottom: var(--space-sm);"><strong>Phase 3 - Consolidate（整合）</strong></p>
+            <ul style="margin: 0; padding-left: var(--space-xl); line-height: 1.7; color: var(--text-secondary); font-size: var(--font-size-sm);">
+              <li>将新信息合并到现有主题文件，而非创建近重复文件</li>
+              <li>转换相对日期为绝对日期（“昨天” → “2026-04-08”）</li>
+              <li>删除或修正矛盾的事实</li>
+              <li>遵循 memoryTypes.ts 中的“什么不该存”规则</li>
+            </ul>
+          </div>
+
+          <div class="card" style="padding: var(--space-lg); background: #fce7f3; border-color: #fbcfe8; margin: var(--space-md) 0;">
+            <p style="margin-bottom: var(--space-sm);"><strong>Phase 4 - Prune and Index（修剪和索引）</strong></p>
+            <ul style="margin: 0; padding-left: var(--space-xl); line-height: 1.7; color: var(--text-secondary); font-size: var(--font-size-sm);">
+              <li>保持 <code>MEMORY.md</code> 在 200 行 / 25KB 以内</li>
+              <li>每条索引一行，约 150 字符：<code>- [标题](文件.md) — 一句话钩子</code></li>
+              <li>移除指向过时、错误或已被取代记忆的指针</li>
+              <li>缩短冗长的索引条目（超过 200 字符的行说明携带了应放在主题文件中的内容）</li>
+            </ul>
+          </div>
+
+          <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin: var(--space-lg) 0 var(--space-sm);">2.3.4 实现细节：锁文件与 mtime</h4>
+          <p class="content-p">Dream 使用一个巧妙的机制来跟踪上次整理时间：<strong>锁文件的 mtime（修改时间）就是 <code>lastConsolidatedAt</code></strong>。</p>
+          
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">锁文件结构</span>
+            </div>
+            <pre><code class="language-text">// 锁文件路径：~/.claude/projects/&lt;project&gt;/memory/.consolidate-lock
+// 文件内容：持有锁的进程 PID
+// 文件 mtime：上次整理的时间戳</code></pre>
+          </div>
+
+          <p class="content-p"><strong>获取锁的流程</strong>：</p>
+          <ol style="margin: var(--space-md) 0; padding-left: var(--space-xl); line-height: 1.8; color: var(--text-secondary);">
+            <li>读取锁文件的 mtime 和 PID</li>
+            <li>如果 mtime 在 1 小时内且 PID 对应的进程仍在运行 → 锁被占用，放弃</li>
+            <li>如果 PID 已死或 mtime 过期 → reclaim（回收）锁</li>
+            <li>写入当前 PID，mtime 自动更新为 now</li>
+            <li>验证写入成功（防止竞态条件）</li>
+          </ol>
+
+          <p class="content-p"><strong>失败回滚</strong>：如果 dream 执行失败，会调用 <code>rollbackConsolidationLock(priorMtime)</code> 将 mtime 回滚到获取锁之前的值，确保下次还能触发。</p>
+
+          <div class="callout callout-info" style="margin: var(--space-lg) 0;">
+            <p style="margin: 0; font-size: var(--font-size-sm);">
+              <strong>💡 设计精妙之处</strong>：<br/>
+              • <strong>无需额外存储</strong>：mtime 本身就是时间戳，不需要单独的文件记录<br/>
+              • <strong>天然防死锁</strong>：进程崩溃后，锁文件还在但 PID 已死，下一个进程可以 reclaim<br/>
+              • <strong>原子性保证</strong>：通过“先写后验证”防止多进程竞态
+            </p>
+          </div>
+
+          <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin: var(--space-lg) 0 var(--space-sm);">2.3.5 UI 可见性与控制</h4>
+          <p class="content-p">Dream 虽然是后台任务，但用户可以通过以下方式感知和控制：</p>
+          <ul style="margin: var(--space-md) 0; padding-left: var(--space-xl); line-height: 1.8; color: var(--text-secondary);">
+            <li><strong>任务栏显示</strong>：Dream 运行时，底部任务栏会显示 <code>dreaming</code> 状态；Shift+Down 打开后台任务对话框可看到实时进展</li>
+            <li><strong>完成通知</strong>：完成后在主对话中插入系统消息：<code>Improved memory files: user_preferences.md, project_auth.md</code></li>
+            <li><strong>手动触发</strong>：通过 <code>/dream</code> 命令手动触发整理（绕过时间和会话门控），或在 Memory 设置界面（<code>/memory</code>）中开启/关闭 <code>Auto-dream</code></li>
+          </ul>
+
+          <div class="code-block">
+            <div class="code-block-header">
+              <div class="code-block-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+              <span class="code-block-lang">settings.json 配置</span>
+            </div>
+            <pre><code class="language-json">{
+  "autoDreamEnabled": true,  // 启用/禁用自动 dream
+  "autoMemoryEnabled": true   // 父开关：禁用则所有自动记忆功能关闭
+}</code></pre>
+          </div>
+
+          <h4 style="font-size: var(--font-size-md); font-weight: 700; color: var(--text-heading); margin: var(--space-lg) 0 var(--space-sm);">2.3.6 Dream vs ExtractMemories 对比</h4>
+          
+          <table class="arch-table">
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th>extractMemories</th>
+                <th>auto-dream</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>触发时机</strong></td>
+                <td>每轮对话结束后</td>
+                <td>定期（24h + 5 会话）</td>
+              </tr>
+              <tr>
+                <td><strong>运行频率</strong></td>
+                <td>高频（每轮）</td>
+                <td>低频（每天几次）</td>
+              </tr>
+              <tr>
+                <td><strong>工作范围</strong></td>
+                <td>仅分析本轮新消息</td>
+                <td>扫描所有近期会话 + 现有记忆</td>
+              </tr>
+              <tr>
+                <td><strong>主要目标</strong></td>
+                <td>增量写入新记忆</td>
+                <td>整理、合并、修剪已有记忆</td>
+              </tr>
+              <tr>
+                <td><strong>Token 成本</strong></td>
+                <td>低（只看新消息）</td>
+                <td>高（需要 grep 多个会话）</td>
+              </tr>
+              <tr>
+                <td><strong>互斥策略</strong></td>
+                <td>检查主代理是否写了记忆</td>
+                <td>锁文件机制</td>
+              </tr>
+              <tr>
+                <td><strong>UI 可见性</strong></td>
+                <td>不可见（完全后台）</td>
+                <td>可见（任务栏 + 完成通知）</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p class="content-p">两者形成<strong>互补的双层记忆维护体系</strong>：</p>
+          <ul style="margin: var(--space-md) 0; padding-left: var(--space-xl); line-height: 1.8; color: var(--text-secondary);">
+            <li><code>extractMemories</code> 负责“及时捕获”——不让有价值的信息溜走</li>
+            <li><code>auto-dream</code> 负责“定期打理”——防止记忆系统熵增退化</li>
+          </ul>
+
+          <div class="callout callout-tip" style="margin: var(--space-lg) 0;">
+            <p style="margin: 0; font-size: var(--font-size-sm);">
+              <strong>💡 设计点评 — AI 的自我维护能力</strong><br/><br/>
+              <strong>好在哪里</strong>：传统软件需要用户手动清理缓存、整理文件、删除过时数据。Claude Code 的 dream 机制让 AI <strong>主动维护自己的知识库</strong>，就像人睡觉时的“记忆巩固”过程——白天学习新知识，晚上整理归档。这种“自我维护”设计大幅降低了用户的认知负担。<br/><br/>
+              <strong>如果不这样做</strong>：用户需要定期手动运行“清理记忆”命令，或者忍受越来越慢的检索速度和越来越多的矛盾记忆。对于非技术用户来说，这几乎是不可能持续维护的。Dream 把“数据库管理员”的工作自动化了。
+            </p>
+          </div>
         </div>
       </section>
 
@@ -894,6 +1093,29 @@ Why：用户认为"好代码就是文档"，冗余注释是噪音。</code></pre
               <strong>参考答案</strong>：空字节攻击：C 语言的字符串以 <code>\0</code> 终止，所以许多底层 syscall（如 <code>open()</code>、<code>stat()</code>）在遇到 <code>\0</code> 时会截断路径。攻击者构造 <code>/safe/path\0/evil</code>，在 Node.js 的 <code>path.normalize()</code> 里，<code>\0</code> 是普通字符，不会被截断，normalize 结果仍包含它；但真正调用 <code>fs.writeFile()</code> 时，底层 libc 的 <code>fopen()</code> 会在 <code>\0</code> 处截断，实际操作 <code>/safe/path</code>。如果 <code>/safe/path</code> 是一个系统文件（如 <code>/etc/passwd</code>），攻击者就利用了路径校验绕过写入了原本不应该有权限写的文件。JavaScript 的 <code>path.normalize</code> 不处理 <code>\0</code>，因此必须在校验层显式拒绝包含空字节的路径。
             </p>
           </details>
+
+          <details>
+            <summary>💡 题目 6：Dream 使用锁文件的 mtime 而不是单独存储 <code>lastConsolidatedAt</code> 值，这种设计有什么优势？如果改用单独的文件记录时间戳，会遇到什么问题？</summary>
+            <p>
+              <strong>参考答案</strong>：<br/><br/>
+              <strong>优势 1：减少 I/O 操作</strong>。读取 mtime 只需要一次 <code>stat()</code> 系统调用，而如果单独存储时间戳，需要先读文件内容再解析，多了一次 I/O。对于每轮对话都要检查的门控条件来说，这个性能差异很重要。<br/><br/>
+              <strong>优势 2：原子性保证</strong>。写入锁文件时，操作系统会自动更新 mtime，不需要额外的“更新时间戳”操作。如果分开存储，可能出现“写了 PID 但没更新时间戳”或“更新了时间戳但 PID 写入失败”的不一致状态。<br/><br/>
+              <strong>优势 3：天然防死锁</strong>。进程崩溃后，锁文件还在，但通过检查 PID 是否存活就能判断是否可以 reclaim。如果只用时间戳文件，无法区分“进程还在运行但很久没更新”和“进程已死”两种情况。<br/><br/>
+              <strong>如果不这样做</strong>：用单独文件存储时间戳，需要维护两个文件的同步（锁文件 + 时间戳文件），增加了复杂性。而且每次获取/释放锁都需要两次文件操作（读/写锁文件 + 读/写时间戳文件），性能下降一倍。更重要的是，两个文件之间可能出现竞态条件——比如进程 A 读了时间戳判断可以执行，但在获取锁之前，进程 B 已经获取了锁并更新了时间戳，进程 A 基于过期的时间戳做出了错误决策。
+            </p>
+          </details>
+
+          <details>
+            <summary>💡 题目 7：Dream 的四阶段工作流中，Phase 4（Prune and Index）要求索引条目保持在 150 字符以内。如果一个记忆主题非常重要，但描述需要 300 字符才能说清楚，你会怎么处理？</summary>
+            <p>
+              <strong>参考答案</strong>：正确的做法是：<strong>索引行保持简短（150 字符），细节放在主题文件里</strong>。<br/><br/>
+              例如：<br/>
+              <code style="display: block; margin: var(--space-sm) 0; padding: var(--space-sm); background: #f8fafc; border-radius: var(--radius-sm);"># MEMORY.md 索引行（150 字符以内）<br/>- [project] Auth 重写原因 — 合规需求，非技术债 (2026-01-15)</code><br/>
+              <code style="display: block; margin: var(--space-sm) 0; padding: var(--space-sm); background: #f8fafc; border-radius: var(--radius-sm);"># project_auth_rewrite.md 主题文件（详细内容）<br/>---<br/>name: Auth 重写背景<br/>type: project<br/>---<br/><br/>## 背景<br/>由于新的 GDPR 合规要求，我们需要在 2026-03-01 前完成 auth 模块的重写...<br/><br/>## 关键决策<br/>1. 不再使用 JWT，改用 session-based auth<br/>2. 用户数据必须存储在 EU 区域的数据库<br/>...</code><br/><br/>
+              MEMORY.md 是<strong>索引</strong>，不是内容仓库。它的作用是让 Claude 快速知道“有哪些记忆可用”，而不是“记忆的详细内容是什么”。当 Claude 看到索引条目觉得相关时，会再去读取对应的主题文件获取详细信息。<br/><br/>
+              如果索引行太长（超过 200 字符），Dream 的 Phase 4 会主动缩短它，把详细内容移回主题文件。这是为了防止 MEMORY.md 膨胀导致被截断，从而丢失部分记忆的可见性。
+            </p>
+          </details>
         </div>
 
         <!-- 小结 -->
@@ -916,6 +1138,14 @@ Why：用户认为"好代码就是文档"，冗余注释是噪音。</code></pre
               <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
                 <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
                 <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>路径安全</strong>：多层防御（空字节、UNC 路径、驱动器根）确保记忆权限边界不被绕过</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>双层维护</strong>：extractMemories 及时捕获 + auto-dream 定期整理，互补防止记忆熵增</span>
+              </div>
+              <div style="display: flex; gap: var(--space-sm); align-items: flex-start;">
+                <span style="color: var(--accent-green); font-size: 16px; margin-top: 2px;">✓</span>
+                <span style="font-size: var(--font-size-sm); color: var(--text-secondary);"><strong>AI 自我维护</strong>：dream 机制让 AI 主动整理知识库，像人睡觉时的“记忆巩固”过程</span>
               </div>
             </div>
           </div>
